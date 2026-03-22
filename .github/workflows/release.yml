@@ -13,6 +13,11 @@ on:
         required: true
         default: 'v1.0.0'
 
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
 jobs:
   create-release:
     name: Create Release
