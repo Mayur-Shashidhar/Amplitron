@@ -5,6 +5,7 @@
 #include <ctime>
 #include <cstring>
 #include <cstdio>
+#include <cstdlib>
 #include <cmath>
 
 #ifdef _WIN32
@@ -17,6 +18,17 @@
 
 namespace GuitarAmp {
 
+static void mkdirs(const std::string& path) {
+    std::string current;
+    for (char c : path) {
+        current += c;
+        if (c == '/' || c == '\\') {
+            MKDIR(current.c_str());
+        }
+    }
+    MKDIR(path.c_str());
+}
+
 Recorder::Recorder() {
     for (auto& v : waveform_buf_) v.store(0.0f);
 }
@@ -26,6 +38,21 @@ Recorder::~Recorder() {
 }
 
 std::string Recorder::get_recordings_dir() {
+#if defined(__APPLE__)
+    const char* home = std::getenv("HOME");
+    if (home) {
+        std::string dir = std::string(home) + "/Documents/Amplitron/recordings";
+        mkdirs(dir);
+        return dir;
+    }
+#elif !defined(_WIN32)
+    const char* home = std::getenv("HOME");
+    if (home) {
+        std::string dir = std::string(home) + "/.local/share/amplitron/recordings";
+        mkdirs(dir);
+        return dir;
+    }
+#endif
     std::string dir = "recordings";
     MKDIR(dir.c_str());
     return dir;
@@ -64,6 +91,12 @@ bool Recorder::start(const std::string& filepath, int sample_rate, int channels)
     // ~60 waveform updates per second (at 48kHz, ~800 samples per bin)
     samples_per_bin_ = std::max(1, sample_rate / (WAVEFORM_SIZE * 2));
 
+    // Initialize ring buffer and pre-allocated PCM conversion buffer
+    ring_buffer_.resize(RING_BUFFER_SIZE, 0.0f);
+    ring_write_pos_ = 0;
+    ring_read_pos_ = 0;
+    pcm_buffer_.resize(4096);
+
     file_.open(filepath, std::ios::binary);
     if (!file_.is_open()) {
         std::cerr << "Recorder: failed to open " << filepath << std::endl;
@@ -74,6 +107,10 @@ bool Recorder::start(const std::string& filepath, int sample_rate, int channels)
     recording_ = true;
     start_time_ = std::chrono::steady_clock::now();
 
+    // Start the disk writer thread (keeps file I/O off the real-time audio thread)
+    writer_running_ = true;
+    writer_thread_ = std::thread(&Recorder::writer_thread_func, this);
+
     std::cout << "Recording started: " << filepath << std::endl;
     return true;
 }
@@ -82,6 +119,12 @@ void Recorder::stop() {
     if (!recording_) return;
     recording_ = false;
     paused_ = false;
+
+    // Stop writer thread and wait for it to drain remaining buffered data
+    writer_running_ = false;
+    if (writer_thread_.joinable()) {
+        writer_thread_.join();
+    }
 
     finalize_wav_header();
     file_.close();
@@ -150,17 +193,21 @@ void Recorder::discard() {
 void Recorder::write_samples(const float* buffer, int num_samples) {
     if (!recording_ || paused_) return;
 
-    // Convert float32 to int16 PCM for WAV
-    std::vector<int16_t> pcm(num_samples * channels_);
-    for (int i = 0; i < num_samples * channels_; ++i) {
-        float s = buffer[i];
-        if (s > 1.0f) s = 1.0f;
-        if (s < -1.0f) s = -1.0f;
-        pcm[i] = static_cast<int16_t>(s * 32767.0f);
+    // Push samples into lock-free ring buffer (real-time safe: no alloc, no I/O)
+    int64_t wp = ring_write_pos_.load(std::memory_order_relaxed);
+    int64_t rp = ring_read_pos_.load(std::memory_order_acquire);
+    int64_t available_space = RING_BUFFER_SIZE - (wp - rp);
+
+    int to_write = num_samples * channels_;
+    if (to_write > static_cast<int>(available_space)) {
+        to_write = static_cast<int>(available_space);
     }
 
-    file_.write(reinterpret_cast<const char*>(pcm.data()),
-                pcm.size() * sizeof(int16_t));
+    for (int i = 0; i < to_write; ++i) {
+        ring_buffer_[static_cast<int>(wp % RING_BUFFER_SIZE)] = buffer[i];
+        wp++;
+    }
+    ring_write_pos_.store(wp, std::memory_order_release);
     samples_written_ += num_samples;
 
     // Update waveform ring buffer (lock-free)
@@ -175,6 +222,39 @@ void Recorder::write_samples(const float* buffer, int num_samples) {
             current_peak_.store(bin_peak_);
             bin_peak_ = 0.0f;
             bin_sample_count_ = 0;
+        }
+    }
+}
+
+void Recorder::writer_thread_func() {
+    while (true) {
+        int64_t rp = ring_read_pos_.load(std::memory_order_relaxed);
+        int64_t wp = ring_write_pos_.load(std::memory_order_acquire);
+        int64_t available = wp - rp;
+
+        if (available > 0) {
+            // Drain available samples: convert float -> int16 PCM and write to disk
+            while (available > 0) {
+                int chunk = static_cast<int>(std::min(available,
+                            static_cast<int64_t>(pcm_buffer_.size())));
+                for (int i = 0; i < chunk; ++i) {
+                    float s = ring_buffer_[static_cast<int>((rp + i) % RING_BUFFER_SIZE)];
+                    if (s > 1.0f) s = 1.0f;
+                    if (s < -1.0f) s = -1.0f;
+                    pcm_buffer_[i] = static_cast<int16_t>(s * 32767.0f);
+                }
+                file_.write(reinterpret_cast<const char*>(pcm_buffer_.data()),
+                            chunk * sizeof(int16_t));
+                rp += chunk;
+                available -= chunk;
+            }
+            ring_read_pos_.store(rp, std::memory_order_release);
+        } else {
+            // No data available — exit if stopped, otherwise poll briefly
+            if (!writer_running_.load(std::memory_order_acquire)) {
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
     }
 }

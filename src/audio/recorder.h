@@ -4,6 +4,7 @@
 #include <fstream>
 #include <chrono>
 #include <array>
+#include <thread>
 
 namespace GuitarAmp {
 
@@ -80,6 +81,19 @@ private:
     // WAV header helpers
     void write_wav_header();
     void finalize_wav_header();
+
+    // Lock-free ring buffer for real-time audio thread -> disk writer thread
+    static constexpr int RING_BUFFER_SIZE = 48000 * 4;
+    std::vector<float> ring_buffer_;
+    std::atomic<int64_t> ring_write_pos_{0};
+    std::atomic<int64_t> ring_read_pos_{0};
+
+    // Disk writer thread (keeps file I/O off the real-time audio thread)
+    std::thread writer_thread_;
+    std::atomic<bool> writer_running_{false};
+    std::vector<int16_t> pcm_buffer_;
+
+    void writer_thread_func();
 };
 
 } // namespace GuitarAmp
