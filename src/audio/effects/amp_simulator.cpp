@@ -262,7 +262,7 @@ void AmpSimulator::process(float* buffer, int num_samples) {
         x = soft * (1.0f - sat_mix) + hard * sat_mix;
 
         // --- DC blocking high-pass filter ---
-        float hp_coeff = 0.001f;
+        float hp_coeff = 0.005f;
         hp_state_ += hp_coeff * (x - hp_state_);
         x -= hp_state_;
 

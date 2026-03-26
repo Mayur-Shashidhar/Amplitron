@@ -53,6 +53,9 @@ private:
     /** @brief Find the index of the current AmpSimulator in the effect chain (-1 if none). */
     int find_amp_index() const;
 
+    /** @brief Add an effect, rebuild widgets, and mark it visible. */
+    void add_effect_and_show(std::shared_ptr<Effect> effect);
+
     AudioEngine& engine_;
     CommandHistory& history_;
     std::vector<std::unique_ptr<PedalWidget>> widgets_;

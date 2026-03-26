@@ -13,12 +13,11 @@
 #include "audio/effects/reverb.h"
 #include "audio/effects/cabinet_sim.h"
 #include "audio/effects/amp_simulator.h"
-#include "audio/effects/tuner.h"
 #include <cstring>
+#include <cstdio>
 #include <set>
 
 #include <imgui.h>
-#include <algorithm>
 
 namespace GuitarAmp {
 
@@ -71,11 +70,13 @@ void PedalBoard::rebuild_widgets() {
     for (int i = 0; i < static_cast<int>(effects.size()); ++i) {
         const char* name = effects[i]->name();
         bool is_amp = (std::strcmp(name, "Amp Sim") == 0);
+        bool is_special = (std::strcmp(name, "Equalizer") == 0 || std::strcmp(name, "Reverb") == 0);
         bool was_visible = visible_names.count(name) > 0;
         
         // Always show amps, EQ, and Reverb
-        // Show other effects if they were visible before or if they're newly added
-        if (is_amp || std::strcmp(name, "Equalizer") == 0 || std::strcmp(name, "Reverb") == 0 || was_visible) {
+        // Show other effects if they were visible before, or on initial rebuild
+        // (visible_names empty means first build or post-clear — show everything)
+        if (is_amp || is_special || was_visible || (visible_names.empty() && !is_amp)) {
             visible_indices_.insert(i);
         }
     }
@@ -136,6 +137,15 @@ void PedalBoard::render() {
     ImGui::EndChild();
 }
 
+/** @brief Add an effect to the chain via undo system, rebuild widgets, and make it visible. */
+void PedalBoard::add_effect_and_show(std::shared_ptr<Effect> effect) {
+    history_.execute(std::make_unique<AddEffectCommand>(engine_, std::move(effect)));
+    rebuild_widgets();
+    if (!engine_.effects().empty()) {
+        visible_indices_.insert(static_cast<int>(engine_.effects().size()) - 1);
+    }
+}
+
 /** @brief Render the "+ Add Pedal" button and category popup with effect menu items.
  *  Amps and Tuner are handled separately (amp selector dropdown, tuner modal). */
 void PedalBoard::render_add_pedal_menu() {
@@ -146,80 +156,43 @@ void PedalBoard::render_add_pedal_menu() {
     if (ImGui::BeginPopup("AddPedalPopup")) {
         ImGui::TextColored(Theme::Gold(), "DRIVE");
         if (ImGui::MenuItem("Overdrive")) {
-            history_.execute(std::make_unique<AddEffectCommand>(engine_, std::make_shared<Overdrive>()));
-            rebuild_widgets();
-            // Make the newly added pedal visible
-            if (!engine_.effects().empty()) {
-                visible_indices_.insert(static_cast<int>(engine_.effects().size()) - 1);
-            }
+            add_effect_and_show(std::make_shared<Overdrive>());
         }
         if (ImGui::MenuItem("Distortion")) {
-            history_.execute(std::make_unique<AddEffectCommand>(engine_, std::make_shared<Distortion>()));
-            rebuild_widgets();
-            if (!engine_.effects().empty()) {
-                visible_indices_.insert(static_cast<int>(engine_.effects().size()) - 1);
-            }
+            add_effect_and_show(std::make_shared<Distortion>());
         }
 
         ImGui::Separator();
         ImGui::TextColored(Theme::Live(), "DYNAMICS");
         if (ImGui::MenuItem("Noise Gate")) {
-            history_.execute(std::make_unique<AddEffectCommand>(engine_, std::make_shared<NoiseGate>()));
-            rebuild_widgets();
-            if (!engine_.effects().empty()) {
-                visible_indices_.insert(static_cast<int>(engine_.effects().size()) - 1);
-            }
+            add_effect_and_show(std::make_shared<NoiseGate>());
         }
         if (ImGui::MenuItem("Compressor")) {
-            history_.execute(std::make_unique<AddEffectCommand>(engine_, std::make_shared<Compressor>()));
-            rebuild_widgets();
-            if (!engine_.effects().empty()) {
-                visible_indices_.insert(static_cast<int>(engine_.effects().size()) - 1);
-            }
+            add_effect_and_show(std::make_shared<Compressor>());
         }
 
         ImGui::Separator();
         ImGui::TextColored(ImVec4(0.35f, 0.60f, 0.95f, 1.0f), "MODULATION");
         if (ImGui::MenuItem("Chorus")) {
-            history_.execute(std::make_unique<AddEffectCommand>(engine_, std::make_shared<Chorus>()));
-            rebuild_widgets();
-            if (!engine_.effects().empty()) {
-                visible_indices_.insert(static_cast<int>(engine_.effects().size()) - 1);
-            }
+            add_effect_and_show(std::make_shared<Chorus>());
         }
 
         ImGui::Separator();
         ImGui::TextColored(ImVec4(0.65f, 0.35f, 0.95f, 1.0f), "TIME");
         if (ImGui::MenuItem("Delay")) {
-            history_.execute(std::make_unique<AddEffectCommand>(engine_, std::make_shared<Delay>()));
-            rebuild_widgets();
-            if (!engine_.effects().empty()) {
-                visible_indices_.insert(static_cast<int>(engine_.effects().size()) - 1);
-            }
+            add_effect_and_show(std::make_shared<Delay>());
         }
         if (ImGui::MenuItem("Reverb")) {
-            history_.execute(std::make_unique<AddEffectCommand>(engine_, std::make_shared<Reverb>()));
-            rebuild_widgets();
-            if (!engine_.effects().empty()) {
-                visible_indices_.insert(static_cast<int>(engine_.effects().size()) - 1);
-            }
+            add_effect_and_show(std::make_shared<Reverb>());
         }
 
         ImGui::Separator();
         ImGui::TextColored(Theme::GoldDim(), "TONE");
         if (ImGui::MenuItem("Equalizer")) {
-            history_.execute(std::make_unique<AddEffectCommand>(engine_, std::make_shared<Equalizer>()));
-            rebuild_widgets();
-            if (!engine_.effects().empty()) {
-                visible_indices_.insert(static_cast<int>(engine_.effects().size()) - 1);
-            }
+            add_effect_and_show(std::make_shared<Equalizer>());
         }
         if (ImGui::MenuItem("Cabinet Sim")) {
-            history_.execute(std::make_unique<AddEffectCommand>(engine_, std::make_shared<CabinetSim>()));
-            rebuild_widgets();
-            if (!engine_.effects().empty()) {
-                visible_indices_.insert(static_cast<int>(engine_.effects().size()) - 1);
-            }
+            add_effect_and_show(std::make_shared<CabinetSim>());
         }
 
         ImGui::EndPopup();

@@ -21,6 +21,8 @@ TunerPedal::TunerPedal() {
         {"A4 Ref", 440.0f, 430.0f, 450.0f, 440.0f, "Hz"}, // Reference pitch for A4
     };
     yin_buffer_.resize(YIN_BUFFER_SIZE, 0.0f);
+    yin_buf_.resize(YIN_BUFFER_SIZE, 0.0f);
+    yin_d_.resize(YIN_BUFFER_SIZE / 2, 0.0f);
     recalc_update_interval();
 }
 
@@ -95,38 +97,38 @@ float TunerPedal::yin_detect_pitch(float /*a4_ref*/) {
     // W = integration window length. Use half the buffer.
     const int W = YIN_BUFFER_SIZE / 2;
 
-    // Linearize the circular buffer: place newest samples contiguously
-    std::vector<float> buf(YIN_BUFFER_SIZE);
+    // Linearize the circular buffer into preallocated member (no heap alloc)
     for (int i = 0; i < YIN_BUFFER_SIZE; ++i) {
-        buf[i] = yin_buffer_[(yin_write_pos_ + i) % YIN_BUFFER_SIZE];
+        yin_buf_[i] = yin_buffer_[(yin_write_pos_ + i) % YIN_BUFFER_SIZE];
     }
 
     // Check if there's enough signal energy (RMS gate)
     float energy = 0.0f;
     for (int i = 0; i < YIN_BUFFER_SIZE; ++i)
-        energy += buf[i] * buf[i];
+        energy += yin_buf_[i] * yin_buf_[i];
     float rms_val = std::sqrt(energy / YIN_BUFFER_SIZE);
     if (rms_val < 0.01f) return -1.0f; // Too quiet — no pitch
 
     // Step 1 & 2: Difference function d(tau) and cumulative mean normalized
     // difference function d'(tau)
-    std::vector<float> yin_d(W, 0.0f);
+    // Reuse preallocated member (no heap alloc)
+    std::fill(yin_d_.begin(), yin_d_.begin() + W, 0.0f);
 
     // d'(0) is defined as 1
-    yin_d[0] = 1.0f;
+    yin_d_[0] = 1.0f;
 
     float running_sum = 0.0f;
 
     for (int tau = 1; tau < W; ++tau) {
         float diff = 0.0f;
         for (int j = 0; j < W; ++j) {
-            float delta = buf[j] - buf[j + tau];
+            float delta = yin_buf_[j] - yin_buf_[j + tau];
             diff += delta * delta;
         }
 
         // Cumulative mean normalized difference
         running_sum += diff;
-        yin_d[tau] = (running_sum > 0.0f) ? (diff * tau / running_sum) : 1.0f;
+        yin_d_[tau] = (running_sum > 0.0f) ? (diff * tau / running_sum) : 1.0f;
     }
 
     // Step 3: Absolute threshold — find the first dip below threshold
@@ -146,10 +148,10 @@ float TunerPedal::yin_detect_pitch(float /*a4_ref*/) {
     // preferring the earliest qualifying dip (highest frequency candidate).
     int best_tau = -1;
     for (int tau = min_tau; tau < max_tau; ++tau) {
-        if (yin_d[tau] < YIN_THRESHOLD) {
+        if (yin_d_[tau] < YIN_THRESHOLD) {
             // Walk to the local minimum of this valley
             int valley_min = tau;
-            while (tau + 1 < max_tau && yin_d[tau + 1] < yin_d[tau]) {
+            while (tau + 1 < max_tau && yin_d_[tau + 1] < yin_d_[tau]) {
                 ++tau;
             }
             // tau now points at the local minimum (or end of descent)
@@ -163,8 +165,8 @@ float TunerPedal::yin_detect_pitch(float /*a4_ref*/) {
     if (best_tau < 1) {
         float global_min = 2.0f;
         for (int tau = min_tau; tau < max_tau; ++tau) {
-            if (yin_d[tau] < global_min) {
-                global_min = yin_d[tau];
+            if (yin_d_[tau] < global_min) {
+                global_min = yin_d_[tau];
                 best_tau = tau;
             }
         }
@@ -177,9 +179,9 @@ float TunerPedal::yin_detect_pitch(float /*a4_ref*/) {
     // Step 4: Parabolic interpolation for sub-sample accuracy
     float refined_tau = static_cast<float>(best_tau);
     if (best_tau > min_tau && best_tau < W - 1) {
-        float s0 = yin_d[best_tau - 1];
-        float s1 = yin_d[best_tau];
-        float s2 = yin_d[best_tau + 1];
+        float s0 = yin_d_[best_tau - 1];
+        float s1 = yin_d_[best_tau];
+        float s2 = yin_d_[best_tau + 1];
         // Only interpolate if it's a true local minimum
         if (s0 > s1 && s2 > s1) {
             float denom = 2.0f * (s0 - 2.0f * s1 + s2);

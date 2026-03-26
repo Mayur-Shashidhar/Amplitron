@@ -43,3 +43,9 @@ external/
 
 # Compile commands
 compile_commands.json
+
+# Cache
+.cache/
+
+# ImGui auto-generated state
+imgui.ini

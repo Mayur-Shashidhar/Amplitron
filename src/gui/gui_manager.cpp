@@ -1290,7 +1290,7 @@ void GuiManager::render_tuner_modal() {
 
         // Cents text (colored)
         float abs_cents = std::fabs(cents);
-        ImVec4 cents_col = (abs_cents < 5.0f)
+        ImVec4 cents_col = (abs_cents < 2.0f)
             ? ImVec4(0.2f, 0.9f, 0.3f, 1.0f)
             : (abs_cents < 15.0f)
                 ? ImVec4(0.9f, 0.8f, 0.2f, 1.0f)

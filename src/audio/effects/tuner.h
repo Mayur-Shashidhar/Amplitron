@@ -37,6 +37,10 @@ private:
     float yin_detect_pitch(float a4_ref);
     void freq_to_note(float freq, float a4_ref);
 
+    // Preallocated work buffers for yin_detect_pitch() (avoids RT heap allocs)
+    std::vector<float> yin_buf_;   // linearized circular buffer (YIN_BUFFER_SIZE)
+    std::vector<float> yin_d_;     // cumulative mean normalized difference (YIN_BUFFER_SIZE/2)
+
     // Update rate control (~15 updates/sec)
     int samples_since_update_ = 0;
     int update_interval_ = 0;

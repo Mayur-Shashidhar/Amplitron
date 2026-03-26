@@ -200,7 +200,7 @@ bool PedalWidget::render() {
                 ImVec2 cents_text_size = ImGui::CalcTextSize(cents_buf);
                 ImGui::SetCursorScreenPos(ImVec2(cx - cents_text_size.x * 0.5f, display_y));
                 float abs_cents = std::fabs(cents);
-                ImVec4 cents_col = (abs_cents < 5.0f)
+                ImVec4 cents_col = (abs_cents < 2.0f)
                     ? ImVec4(0.2f, 0.9f, 0.3f, 1.0f)   // green = in tune
                     : (abs_cents < 15.0f)
                         ? ImVec4(0.9f, 0.8f, 0.2f, 1.0f) // yellow

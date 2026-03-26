@@ -108,6 +108,10 @@ void AudioEngine::set_sample_rate(int rate) {
             fx->set_sample_rate(rate);
             fx->reset();
         }
+        if (tuner_tap_) {
+            tuner_tap_->set_sample_rate(rate);
+            tuner_tap_->reset();
+        }
     }
     if (was_running) {
         if (!start()) {
@@ -118,6 +122,10 @@ void AudioEngine::set_sample_rate(int rate) {
             for (auto& fx : effects_) {
                 fx->set_sample_rate(prev_rate);
                 fx->reset();
+            }
+            if (tuner_tap_) {
+                tuner_tap_->set_sample_rate(prev_rate);
+                tuner_tap_->reset();
             }
             start();
         } else {
