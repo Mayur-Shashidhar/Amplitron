@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
 
     - name: Cache apt packages
       uses: actions/cache@v5
@@ -69,6 +71,8 @@ jobs:
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
 
     - name: Install Dependencies
       run: brew install portaudio sdl2
@@ -179,6 +183,8 @@ jobs:
       EMSDK_VERSION: 3.1.51
     steps:
     - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
 
     - name: Cache Emscripten SDK & ports
       uses: actions/cache@v5
@@ -235,14 +241,7 @@ jobs:
       uses: actions/upload-artifact@v7
       with:
         name: web-build
-        path: |
-          build-web/index.html
-          build-web/index.js
-          build-web/index.wasm
-          build-web/index.worker.js
-          build-web/index.ww.js
-          build-web/coi-serviceworker.js
-          build-web/index.audio.worklet.js
+        path: build-web/
         retention-days: 1
 
   test-windows:
@@ -250,6 +249,8 @@ jobs:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
 
     - name: Setup MSYS2
       uses: msys2/setup-msys2@v2

@@ -158,6 +158,7 @@ private:
 
     // Update checking
     void check_for_updates();
+    std::thread update_check_thread_;
     std::mutex update_mutex_;
     bool has_new_release_ = false;
     std::string new_release_version_;

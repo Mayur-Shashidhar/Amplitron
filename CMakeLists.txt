@@ -274,6 +274,15 @@ else() # NOT EMSCRIPTEN
         target_link_libraries(amplitron-tests PRIVATE dl pthread)
     endif()
 
+    # Copy presets into build directory alongside the executable
+    add_custom_target(copy_presets ALL
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/presets"
+            "$<TARGET_FILE_DIR:guitar-amp>/presets"
+        COMMENT "Copying presets to build directory"
+    )
+    add_dependencies(copy_presets guitar-amp)
+
     # Install
     install(TARGETS guitar-amp RUNTIME DESTINATION bin)
     install(DIRECTORY presets DESTINATION bin)

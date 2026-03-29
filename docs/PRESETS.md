@@ -17,7 +17,7 @@ You can load these presets directly from the "Presets" menu in the GUI.
 * **Use Case:** Excellent for classic rock rhythm playing or blues solos. Focuses heavily on the Marshall JCM800 emulation pushed by an analog-style overdrive.
 
 ### `03 Modern Metal Lead`
-* **Style:** High-gain, tight tracking lead tone
+* **Style:** High-gain, tight-tracking lead tone
 * **Signal Chain:** Noise Gate -> Distortion -> Amp Sim (High Gain Modern) -> Equalizer (Mid-scoop) -> Cabinet (4x12) -> Delay (Lead echoes)
 * **Use Case:** Fast alternate picking, sweep picking, and heavy breakdowns. Uses the Mesa Boogie emulation and hard-clipping distortion.
 
