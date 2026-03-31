@@ -1,0 +1,14 @@
+{
+  "name": "amplitron-web-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Playwright end-to-end tests for the Amplitron web demo",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "PWDEBUG=1 playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.44.0"
+  }
+}
