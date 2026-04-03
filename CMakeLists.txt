@@ -103,6 +103,8 @@ set(APP_SOURCES
     src/audio/effects/delay.cpp
     src/audio/effects/reverb.cpp
     src/audio/effects/chorus.cpp
+    src/audio/effects/phaser.cpp
+    src/audio/effects/flanger.cpp
     src/audio/effects/equalizer.cpp
     src/audio/effects/noise_gate.cpp
     src/audio/effects/compressor.cpp
@@ -248,6 +250,8 @@ else() # NOT EMSCRIPTEN
         src/audio/effects/delay.cpp
         src/audio/effects/reverb.cpp
         src/audio/effects/chorus.cpp
+        src/audio/effects/phaser.cpp
+        src/audio/effects/flanger.cpp
         src/audio/effects/equalizer.cpp
         src/audio/effects/noise_gate.cpp
         src/audio/effects/compressor.cpp

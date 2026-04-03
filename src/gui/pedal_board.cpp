@@ -9,6 +9,8 @@
 #include "audio/effects/distortion.h"
 #include "audio/effects/equalizer.h"
 #include "audio/effects/chorus.h"
+#include "audio/effects/phaser.h"
+#include "audio/effects/flanger.h"
 #include "audio/effects/delay.h"
 #include "audio/effects/reverb.h"
 #include "audio/effects/cabinet_sim.h"
@@ -170,6 +172,12 @@ void PedalBoard::render_add_pedal_menu() {
         ImGui::TextColored(ImVec4(0.35f, 0.60f, 0.95f, 1.0f), "MODULATION");
         if (ImGui::MenuItem("Chorus")) {
             add_effect_and_show(std::make_shared<Chorus>());
+        }
+        if (ImGui::MenuItem("Phaser")) {
+            add_effect_and_show(std::make_shared<Phaser>());
+        }
+        if (ImGui::MenuItem("Flanger")) {
+            add_effect_and_show(std::make_shared<Flanger>());
         }
 
         ImGui::Separator();

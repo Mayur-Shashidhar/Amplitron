@@ -11,6 +11,8 @@
 #include "audio/effects/amp_simulator.h"
 #include "audio/effects/tuner.h"
 #include "audio/effects/wah.h"
+#include "audio/effects/phaser.h"
+#include "audio/effects/flanger.h"
 #include <cstring>
 #include <cmath>
 
@@ -92,6 +94,12 @@ TEST(effect_has_name) {
 
     WahPedal wah;
     ASSERT_TRUE(std::strcmp(wah.name(), "Wah") == 0);
+
+    Phaser ph;
+    ASSERT_TRUE(std::strcmp(ph.name(), "Phaser") == 0);
+
+    Flanger fl;
+    ASSERT_TRUE(std::strcmp(fl.name(), "Flanger") == 0);
 }
 
 TEST(effect_has_params) {
@@ -536,6 +544,8 @@ TEST(all_effects_handle_silence) {
         std::make_shared<Distortion>(),
         std::make_shared<Equalizer>(),
         std::make_shared<Chorus>(),
+        std::make_shared<Phaser>(),
+        std::make_shared<Flanger>(),
         std::make_shared<Delay>(),
         std::make_shared<Reverb>(),
         std::make_shared<CabinetSim>(),
@@ -562,6 +572,8 @@ TEST(all_effects_reset_without_crash) {
         std::make_shared<Distortion>(),
         std::make_shared<Equalizer>(),
         std::make_shared<Chorus>(),
+        std::make_shared<Phaser>(),
+        std::make_shared<Flanger>(),
         std::make_shared<Delay>(),
         std::make_shared<Reverb>(),
         std::make_shared<CabinetSim>(),
@@ -594,6 +606,8 @@ TEST(all_effects_handle_different_sample_rates) {
         std::make_shared<Distortion>(),
         std::make_shared<Equalizer>(),
         std::make_shared<Chorus>(),
+        std::make_shared<Phaser>(),
+        std::make_shared<Flanger>(),
         std::make_shared<Delay>(),
         std::make_shared<Reverb>(),
         std::make_shared<CabinetSim>(),
@@ -710,4 +724,165 @@ TEST(wah_auto_mode_responds_to_amplitude) {
     for (int i = 0; i < N; ++i) loud[i] *= 0.9f; // near-full scale
     wah.process(loud, N);
     ASSERT_TRUE(buffer_is_finite(loud, N));
+}
+
+// ============================================================
+// PhaserEffect tests
+// ============================================================
+
+TEST(phaser_produces_finite_output) {
+    Phaser ph;
+    ph.set_sample_rate(48000);
+    ph.reset();
+
+    float buf[1024];
+    fill_sine(buf, 1024, 440.0f, 48000);
+    ph.process(buf, 1024);
+
+    ASSERT_TRUE(buffer_is_finite(buf, 1024));
+    ASSERT_GT(rms(buf, 1024), 0.001f);
+}
+
+TEST(phaser_params_have_valid_ranges) {
+    Phaser ph;
+    for (auto& p : ph.params()) {
+        ASSERT_TRUE(p.min_val <= p.max_val);
+        ASSERT_TRUE(p.value >= p.min_val && p.value <= p.max_val);
+        ASSERT_TRUE(p.default_val >= p.min_val && p.default_val <= p.max_val);
+        ASSERT_FALSE(p.name.empty());
+    }
+}
+
+TEST(phaser_disabled_passes_dry_signal) {
+    Phaser ph;
+    ph.set_sample_rate(48000);
+    ph.reset();
+    ph.set_enabled(false);
+
+    float buf[256];
+    float ref[256];
+    fill_sine(buf, 256, 440.0f, 48000);
+    for (int i = 0; i < 256; ++i) ref[i] = buf[i];
+    ph.process(buf, 256);
+
+    for (int i = 0; i < 256; ++i)
+        ASSERT_NEAR(buf[i], ref[i], 1e-6f);
+}
+
+// Verify the LFO modulates the all-pass chain: consecutive blocks should
+// differ because the LFO phase advances, causing spectral variation.
+TEST(phaser_lfo_modulates_output) {
+    Phaser ph;
+    ph.set_sample_rate(48000);
+    ph.reset();
+    ph.params()[0].value = 2.0f;  // fast rate so LFO moves noticeably
+    ph.params()[1].value = 1.0f;  // full depth
+    ph.params()[4].value = 0.5f;  // 50% mix
+
+    float buf_a[512], buf_b[512];
+    fill_sine(buf_a, 512, 440.0f, 48000);
+    fill_sine(buf_b, 512, 440.0f, 48000);
+
+    // Process two independent blocks; LFO will be at different phases
+    ph.process(buf_a, 512);
+    ph.process(buf_b, 512);
+
+    // The outputs of the two blocks must differ (LFO advanced between them)
+    float diff = 0.0f;
+    for (int i = 0; i < 512; ++i)
+        diff += std::fabs(buf_a[i] - buf_b[i]);
+    ASSERT_GT(diff, 0.01f);
+}
+
+TEST(phaser_all_stage_counts_finite) {
+    for (int stage_param = 0; stage_param <= 3; ++stage_param) {
+        Phaser ph;
+        ph.set_sample_rate(48000);
+        ph.reset();
+        ph.params()[2].value = static_cast<float>(stage_param);
+
+        float buf[512];
+        fill_sine(buf, 512, 440.0f, 48000);
+        ph.process(buf, 512);
+        ASSERT_TRUE(buffer_is_finite(buf, 512));
+    }
+}
+
+// ============================================================
+// FlangerEffect tests
+// ============================================================
+
+TEST(flanger_produces_finite_output) {
+    Flanger fl;
+    fl.set_sample_rate(48000);
+    fl.reset();
+
+    float buf[1024];
+    fill_sine(buf, 1024, 440.0f, 48000);
+    fl.process(buf, 1024);
+
+    ASSERT_TRUE(buffer_is_finite(buf, 1024));
+    ASSERT_GT(rms(buf, 1024), 0.001f);
+}
+
+TEST(flanger_params_have_valid_ranges) {
+    Flanger fl;
+    for (auto& p : fl.params()) {
+        ASSERT_TRUE(p.min_val <= p.max_val);
+        ASSERT_TRUE(p.value >= p.min_val && p.value <= p.max_val);
+        ASSERT_TRUE(p.default_val >= p.min_val && p.default_val <= p.max_val);
+        ASSERT_FALSE(p.name.empty());
+    }
+}
+
+TEST(flanger_disabled_passes_dry_signal) {
+    Flanger fl;
+    fl.set_sample_rate(48000);
+    fl.reset();
+    fl.set_enabled(false);
+
+    float buf[256];
+    float ref[256];
+    fill_sine(buf, 256, 440.0f, 48000);
+    for (int i = 0; i < 256; ++i) ref[i] = buf[i];
+    fl.process(buf, 256);
+
+    for (int i = 0; i < 256; ++i)
+        ASSERT_NEAR(buf[i], ref[i], 1e-6f);
+}
+
+// Verify the LFO modulates the delay: two consecutive equal-signal blocks
+// should differ because the sweep position advances between them.
+TEST(flanger_lfo_modulates_output) {
+    Flanger fl;
+    fl.set_sample_rate(48000);
+    fl.reset();
+    fl.params()[0].value = 2.0f;  // fast rate
+    fl.params()[1].value = 5.0f;  // wide depth
+    fl.params()[4].value = 0.5f;  // 50% mix
+
+    float buf_a[512], buf_b[512];
+    fill_sine(buf_a, 512, 440.0f, 48000);
+    fill_sine(buf_b, 512, 440.0f, 48000);
+
+    fl.process(buf_a, 512);
+    fl.process(buf_b, 512);
+
+    float diff = 0.0f;
+    for (int i = 0; i < 512; ++i)
+        diff += std::fabs(buf_a[i] - buf_b[i]);
+    ASSERT_GT(diff, 0.01f);
+}
+
+// High feedback must not produce runaway (NaN/Inf)
+TEST(flanger_high_feedback_stays_finite) {
+    Flanger fl;
+    fl.set_sample_rate(48000);
+    fl.reset();
+    fl.params()[3].value = 0.95f;  // max positive feedback
+
+    float buf[4096];
+    fill_sine(buf, 4096, 220.0f, 48000);
+    fl.process(buf, 4096);
+    ASSERT_TRUE(buffer_is_finite(buf, 4096));
 }

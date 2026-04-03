@@ -248,6 +248,8 @@ inline const EffectColorEntry* get_effect_color(const char* effect_name) {
         {"Delay",      ImVec4(0.12f, 0.22f, 0.38f, 1.0f), ImVec4(0.35f, 0.60f, 0.95f, 1.0f)},
         {"Reverb",     ImVec4(0.14f, 0.28f, 0.36f, 1.0f), ImVec4(0.25f, 0.72f, 0.85f, 1.0f)},
         {"Chorus",     ImVec4(0.26f, 0.14f, 0.38f, 1.0f), ImVec4(0.65f, 0.35f, 0.95f, 1.0f)},
+        {"Phaser",     ImVec4(0.22f, 0.10f, 0.34f, 1.0f), ImVec4(0.80f, 0.25f, 0.90f, 1.0f)},
+        {"Flanger",    ImVec4(0.14f, 0.20f, 0.36f, 1.0f), ImVec4(0.30f, 0.70f, 1.00f, 1.0f)},
         {"Equalizer",  ImVec4(0.14f, 0.32f, 0.18f, 1.0f), ImVec4(0.25f, 0.90f, 0.40f, 1.0f)},
         {"Noise Gate", ImVec4(0.20f, 0.19f, 0.22f, 1.0f), ImVec4(0.70f, 0.70f, 0.80f, 1.0f)},
         {"Compressor", ImVec4(0.34f, 0.26f, 0.14f, 1.0f), ImVec4(0.95f, 0.65f, 0.25f, 1.0f)},
