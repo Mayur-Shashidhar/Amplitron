@@ -84,7 +84,7 @@ Each effect pedal in Amplitron acts as an independent DSP processing agent. They
 
 Because the UI Agent and the DSP Agents operate on entirely different threads (with vastly different priority levels), they must communicate carefully to avoid "Dropouts" (audio clicking/stuttering).
 
-* **The `try_lock` Paradigm:** When the UI Agent attempts to modify a DSP Agent's state (e.g., turning a knob), the Audio Engine uses a non-blocking `try_lock` on the data mutex. If the UI is currently writing, the Audio Engine simply processes the buffer using the *previous* state rather than waiting. 
+* **The `try_lock` + Shadow-Chain Paradigm:** The Audio Engine maintains an audio-thread-private shadow copy of the effect chain (`audio_shadow_effects_` / `audio_shadow_tuner_`). Each callback it attempts a non-blocking `try_lock` on `effect_mutex_`. If acquired it drains the SPSC command queue (applying pending parameter updates) and refreshes the shadow from `effects_`. If contended (GUI is mid-structural-mutation), it falls through and processes with the previous shadow — at most one callback behind, which is imperceptible. This eliminates the dry-pass glitch that previously occurred when skipping effect processing entirely on a failed `try_lock`.
 * **Parameter Smoothing:** DSP Agents utilize one-pole filters internally on their parameter inputs. If the UI Agent jumps a parameter from `0.1` to `0.9` instantly, the DSP Agent interpolates the value over several samples to prevent audible "zipper" noise or clicking.
 
 ---

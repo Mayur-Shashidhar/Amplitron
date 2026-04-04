@@ -13,6 +13,7 @@ namespace GuitarAmp {
 
 AudioEngine::AudioEngine() {
     process_buffer_.resize(MAX_BUFFER_SIZE, 0.0f);
+    process_buffer_right_.resize(MAX_BUFFER_SIZE, 0.0f);
     backend_ = create_audio_backend();
 }
 
@@ -151,9 +152,10 @@ void AudioEngine::set_sample_rate(int rate) {
 void AudioEngine::process_audio(const float* input, float* output, int frame_count) {
     auto t_start = std::chrono::steady_clock::now();
 
-    // Safety: ensure process buffer is large enough
+    // Safety: ensure process buffers are large enough
     if (frame_count > static_cast<int>(process_buffer_.size())) {
         process_buffer_.resize(frame_count, 0.0f);
+        process_buffer_right_.resize(frame_count, 0.0f);
     }
 
     // Single branch: read once per callback, not per sample.
@@ -190,26 +192,44 @@ void AudioEngine::process_audio(const float* input, float* output, int frame_cou
     }
     input_level_.store(peak_in);
 
-    // Process through effect chain
-    // Structural changes (add/remove/move) still use try_lock for safety;
-    // parameter changes are fully lock-free via the SPSC queue above.
+    // Fan mono input out to both channels before the effect chain
+    std::memcpy(process_buffer_right_.data(), process_buffer_.data(),
+                static_cast<size_t>(frame_count) * sizeof(float));
+
+    // Drain SetInputGain / SetOutputGain commands first — they only touch
+    // atomics and are safe to apply without holding effect_mutex_.  This
+    // ensures gain updates are never stalled by a structural mutex hold.
+    drain_gain_commands();
+
+    // Process through effect chain.
+    // Structural mutations (add/remove/move) are performed by the GUI thread
+    // under a std::lock_guard on effect_mutex_.  The audio thread uses
+    // try_lock: if acquired, it drains effect-targeting commands and refreshes
+    // the audio_shadow_effects_ / audio_shadow_tuner_ mirror; if contended it
+    // falls through and processes with the previous shadow (at most one
+    // callback behind) — eliminating the dry-pass glitch.
     if (effect_mutex_.try_lock()) {
-        // Drain lock-free command queue (GUI -> Audio) while holding the lock
-        // so that effects_ is not accessed concurrently with add/remove/move.
         drain_commands();
-        // Tuner tap: pre-chain pitch detection, optionally mutes signal
-        if (tuner_tap_ && tuner_tap_->is_enabled()) {
-            tuner_tap_->process(process_buffer_.data(), frame_count);
-        }
-        for (auto& fx : effects_) {
-            if (fx->is_enabled()) {
-                fx->process(process_buffer_.data(), frame_count);
-            }
-        }
+        audio_shadow_effects_ = effects_;
+        audio_shadow_tuner_   = tuner_tap_;
         effect_mutex_.unlock();
     }
 
-    // Copy to output with gain
+    // Always process with the shadow — never skip processing.
+    if (audio_shadow_tuner_ && audio_shadow_tuner_->is_enabled()) {
+        audio_shadow_tuner_->process(process_buffer_.data(), frame_count);
+        // Re-sync right channel (tuner may have zeroed the buffer)
+        std::memcpy(process_buffer_right_.data(), process_buffer_.data(),
+                    static_cast<size_t>(frame_count) * sizeof(float));
+    }
+    for (auto& fx : audio_shadow_effects_) {
+        if (fx->is_enabled()) {
+            fx->process_stereo(process_buffer_.data(),
+                               process_buffer_right_.data(), frame_count);
+        }
+    }
+
+    // Copy to output with gain — interleaved stereo [L0, R0, L1, R1, ...]
     float out_gain = output_gain_.load(std::memory_order_relaxed);
     float peak_out = 0.0f;
     if (analyzer_on) {
@@ -218,13 +238,17 @@ void AudioEngine::process_audio(const float* input, float* output, int frame_cou
         bool clipped_out = false;
         int cap = (analyzer_capture_index_ - frame_count) & ANALYZER_FFT_MASK;
         for (int i = 0; i < frame_count; ++i) {
-            float out_sample = process_buffer_[i] * out_gain;
-            if (std::fabs(out_sample) >= 1.0f) clipped_out = true;
-            output[i] = clamp(out_sample, -1.0f, 1.0f);
-            float abs_val = std::fabs(output[i]);
+            float out_l = clamp(process_buffer_[i]       * out_gain, -1.0f, 1.0f);
+            float out_r = clamp(process_buffer_right_[i] * out_gain, -1.0f, 1.0f);
+            if (std::fabs(out_l) >= 1.0f || std::fabs(out_r) >= 1.0f) clipped_out = true;
+            output[i * 2]     = out_l;
+            output[i * 2 + 1] = out_r;
+            // Store post-gain left channel back for recorder
+            process_buffer_[i] = out_l;
+            float abs_val = std::fabs(out_l);
             if (abs_val > peak_out) peak_out = abs_val;
-            sum_sq_out += output[i] * output[i];
-            analyzer_capture_output_[cap] = output[i];
+            sum_sq_out += out_l * out_l;
+            analyzer_capture_output_[cap] = out_l;
             cap = (cap + 1) & ANALYZER_FFT_MASK;
         }
         output_rms_.store(std::sqrt(sum_sq_out / std::max(frame_count, 1)), std::memory_order_relaxed);
@@ -255,19 +279,23 @@ void AudioEngine::process_audio(const float* input, float* output, int frame_cou
             }
         }
     } else {
-        // --- Original zero-overhead path ---
+        // --- Zero-overhead path ---
         for (int i = 0; i < frame_count; ++i) {
-            output[i] = process_buffer_[i] * out_gain;
-            output[i] = clamp(output[i], -1.0f, 1.0f);
-            float abs_val = std::fabs(output[i]);
+            float out_l = clamp(process_buffer_[i]       * out_gain, -1.0f, 1.0f);
+            float out_r = clamp(process_buffer_right_[i] * out_gain, -1.0f, 1.0f);
+            output[i * 2]     = out_l;
+            output[i * 2 + 1] = out_r;
+            // Store post-gain left channel back for recorder
+            process_buffer_[i] = out_l;
+            float abs_val = std::fabs(out_l);
             if (abs_val > peak_out) peak_out = abs_val;
         }
     }
     output_level_.store(peak_out);
 
-    // Record the processed output
+    // Record the processed output — mono left channel
     if (recorder_.is_recording()) {
-        recorder_.write_samples(output, frame_count);
+        recorder_.write_samples(process_buffer_.data(), frame_count);
     }
 
     // CPU load measurement
@@ -281,6 +309,25 @@ void AudioEngine::process_audio(const float* input, float* output, int frame_cou
 // =============================================================================
 // Lock-free command drain (called from audio thread)
 // =============================================================================
+
+// Drains only SetInputGain / SetOutputGain commands that sit at the front of
+// the queue.  Stops as soon as it encounters an effect-targeting command so
+// FIFO order relative to SetEffectParam/etc. is preserved.  May be called
+// without holding effect_mutex_.
+void AudioEngine::drain_gain_commands() {
+    AudioCommand cmd;
+    while (command_queue_.try_peek(cmd)) {
+        if (cmd.type == AudioCommand::SetInputGain) {
+            command_queue_.try_pop(cmd);
+            input_gain_.store(cmd.value, std::memory_order_relaxed);
+        } else if (cmd.type == AudioCommand::SetOutputGain) {
+            command_queue_.try_pop(cmd);
+            output_gain_.store(cmd.value, std::memory_order_relaxed);
+        } else {
+            break;  // Front is an effect command — leave it for drain_commands().
+        }
+    }
+}
 
 void AudioEngine::drain_commands() {
     AudioCommand cmd;

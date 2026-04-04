@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 
 #ifdef _WIN32
 #include <direct.h>
@@ -57,16 +58,37 @@ std::string PresetManager::get_config_path() {
     const char* home = std::getenv("HOME");
     if (!home) return "amplitron_config.json";
     std::string config_dir = std::string(home) + "/.config/amplitron";
-    mkdir(config_dir.c_str(), 0755);
+    std::filesystem::create_directories(config_dir);
     return config_dir + "/config.json";
 #endif
 }
 
+static std::string get_user_presets_dir() {
+#ifdef _WIN32
+    const char* appdata = std::getenv("APPDATA");
+    if (!appdata) return "";
+    return std::string(appdata) + "\\Amplitron\\presets";
+#elif defined(__APPLE__)
+    const char* home = std::getenv("HOME");
+    if (!home) return "";
+    return std::string(home) + "/Library/Application Support/Amplitron/presets";
+#else
+    const char* home = std::getenv("HOME");
+    if (!home) return "";
+    return std::string(home) + "/.config/amplitron/presets";
+#endif
+}
+
 void PresetManager::set_presets_dir(const std::string& dir) {
-    custom_presets_dir_ = dir;
-    if (!dir.empty()) {
-        MKDIR(dir.c_str());
+    if (dir.empty()) {
+        custom_presets_dir_ = "";
+        return;
     }
+    MKDIR(dir.c_str());
+    if (dir_exists(dir)) {
+        custom_presets_dir_ = dir;
+    }
+    // If creation/validation fails, custom_presets_dir_ is left unchanged.
 }
 
 void PresetManager::save_config() {
@@ -118,22 +140,28 @@ void PresetManager::load_config() {
         ++i;
     }
 
-    if (!value.empty()) {
+    if (!value.empty() && dir_exists(value)) {
         custom_presets_dir_ = value;
     }
 }
 
 std::string PresetManager::get_presets_dir() {
-    // 1. User-selected custom directory
+    // 1. User-selected custom directory — verify it still exists.
     if (!custom_presets_dir_.empty()) {
         MKDIR(custom_presets_dir_.c_str());
-        return custom_presets_dir_;
+        if (dir_exists(custom_presets_dir_)) {
+            return custom_presets_dir_;
+        }
+        // Stale path — fall through to the default user dir.
     }
 
-    // 2. System-wide default (only if it already exists; we don't create it)
-    std::string sys = get_system_presets_dir();
-    if (!sys.empty() && dir_exists(sys)) {
-        return sys;
+    // 2. User-writable default presets directory (creates intermediate parents).
+    std::string user_dir = get_user_presets_dir();
+    if (!user_dir.empty()) {
+        std::filesystem::create_directories(user_dir);
+        if (dir_exists(user_dir)) {
+            return user_dir;
+        }
     }
 
     // 3. Local fallback
@@ -142,10 +170,8 @@ std::string PresetManager::get_presets_dir() {
     return dir;
 }
 
-std::vector<std::string> PresetManager::list_presets() {
-    std::vector<std::string> result;
-    std::string dir = get_presets_dir();
-
+static void append_json_files(const std::string& dir,
+                              std::vector<std::string>& result) {
 #ifdef _WIN32
     std::string pattern = dir + "\\*.json";
     struct _finddata_t fd;
@@ -171,6 +197,20 @@ std::vector<std::string> PresetManager::list_presets() {
         closedir(d);
     }
 #endif
+}
+
+std::vector<std::string> PresetManager::list_presets() {
+    std::vector<std::string> result;
+
+    // User / custom presets (writable)
+    append_json_files(get_presets_dir(), result);
+
+    // System presets (read-only source — listed for display but not for saves)
+    std::string sys_dir = get_system_presets_dir();
+    std::string user_dir = get_presets_dir();
+    if (!sys_dir.empty() && dir_exists(sys_dir) && sys_dir != user_dir) {
+        append_json_files(sys_dir, result);
+    }
 
     return result;
 }

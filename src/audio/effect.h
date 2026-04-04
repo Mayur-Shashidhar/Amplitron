@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common.h"
+#include <cstring>
 
 namespace GuitarAmp {
 
@@ -19,6 +20,14 @@ public:
     virtual ~Effect() = default;
 
     virtual void process(float* buffer, int num_samples) = 0;
+
+    // Stereo processing. Default fans mono left channel to both outputs.
+    // Stereo-capable effects override this to produce true stereo.
+    virtual void process_stereo(float* left, float* right, int num_samples) {
+        process(left, num_samples);
+        std::memcpy(right, left, static_cast<size_t>(num_samples) * sizeof(float));
+    }
+
     virtual void set_sample_rate(int sample_rate) { sample_rate_ = sample_rate; }
     virtual void reset() = 0;
 

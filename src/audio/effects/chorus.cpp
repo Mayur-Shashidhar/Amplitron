@@ -61,6 +61,51 @@ void Chorus::process(float* buffer, int num_samples) {
     }
 }
 
+void Chorus::process_stereo(float* left, float* right, int num_samples) {
+    if (!enabled_) {
+        std::memcpy(right, left, static_cast<size_t>(num_samples) * sizeof(float));
+        return;
+    }
+
+    const float rate       = params_[0].value;
+    const float depth_ms   = params_[1].value;
+    const float level      = params_[2].value;
+    const float depth_samp = depth_ms * 0.001f * sample_rate_;
+    const float lfo_inc    = rate / sample_rate_;
+
+    for (int i = 0; i < num_samples; ++i) {
+        const float dry = left[i];
+
+        delay_buffer_[write_pos_] = dry;
+
+        // L: LFO at current phase
+        const float lfo_l  = 0.5f * (1.0f + std::sin(TWO_PI * lfo_phase_));
+        const float dly_l  = 1.0f + lfo_l * depth_samp;
+        // R: LFO at +90° (0.25 of normalised cycle) for quadrature width
+        const float lfo_r  = 0.5f * (1.0f + std::sin(TWO_PI * (lfo_phase_ + 0.25f)));
+        const float dly_r  = 1.0f + lfo_r * depth_samp;
+
+        // Fractional read helper (capture by reference into the loop)
+        auto read_tap = [&](float delay) -> float {
+            float rp = static_cast<float>(write_pos_) - delay;
+            if (rp < 0.0f) rp += static_cast<float>(max_delay_samples_);
+            const int ri  = static_cast<int>(rp);
+            const float f = rp - static_cast<float>(ri);
+            const int p0  = ri % max_delay_samples_;
+            const int p1  = (ri + 1) % max_delay_samples_;
+            return delay_buffer_[p0] * (1.0f - f) + delay_buffer_[p1] * f;
+        };
+
+        const float dry_gain = 1.0f - level * 0.5f;
+        left[i]  = dry * dry_gain + read_tap(dly_l) * level;
+        right[i] = dry * dry_gain + read_tap(dly_r) * level;
+
+        write_pos_ = (write_pos_ + 1) % max_delay_samples_;
+        lfo_phase_ += lfo_inc;
+        if (lfo_phase_ >= 1.0f) lfo_phase_ -= 1.0f;
+    }
+}
+
 void Chorus::reset() {
     std::fill(delay_buffer_.begin(), delay_buffer_.end(), 0.0f);
     write_pos_ = 0;

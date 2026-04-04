@@ -257,7 +257,7 @@ static int pa_audio_callback(const void* input, void* output,
     auto* out = static_cast<float*>(output);
 
     if (!in || !out) {
-        if (out) std::memset(out, 0, frame_count * sizeof(float));
+        if (out) std::memset(out, 0, frame_count * 2 * sizeof(float));
         return paContinue;
     }
 
@@ -308,7 +308,7 @@ bool AudioEngine::start() {
 
     PaStreamParameters output_params;
     output_params.device = output_device_;
-    output_params.channelCount = 1;
+    output_params.channelCount = 2;
     output_params.sampleFormat = paFloat32;
     output_params.suggestedLatency = desired_latency;
     output_params.hostApiSpecificStreamInfo = nullptr;

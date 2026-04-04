@@ -36,7 +36,8 @@ void Flanger::set_sample_rate(int sample_rate) {
     Effect::set_sample_rate(sample_rate);
     max_delay_samples_ = static_cast<int>(sample_rate * MAX_DELAY_MS * 0.001f) + 2;
     delay_buffer_.assign(max_delay_samples_, 0.0f);
-    write_pos_ = 0;
+    delay_buffer_r_.assign(max_delay_samples_, 0.0f);
+    reset();
 }
 
 void Flanger::process(float* buffer, int num_samples) {
@@ -83,10 +84,67 @@ void Flanger::process(float* buffer, int num_samples) {
     }
 }
 
+void Flanger::process_stereo(float* left, float* right, int num_samples) {
+    if (!enabled_) {
+        std::memcpy(right, left, static_cast<size_t>(num_samples) * sizeof(float));
+        return;
+    }
+
+    const float rate     = params_[P_RATE].value;
+    const float depth_ms = params_[P_DEPTH].value;
+    const float delay_ms = params_[P_DELAY].value;
+    const float feedback = params_[P_FEEDBACK].value;
+    const float mix      = params_[P_MIX].value;
+    const float lfo_inc  = rate / static_cast<float>(sample_rate_);
+
+    for (int i = 0; i < num_samples; ++i) {
+        const float dry = left[i];
+
+        // Left LFO
+        const float lfo_l      = 0.5f * (1.0f + std::sin(TWO_PI * lfo_phase_));
+        const float delay_samp_l = clamp(
+            (delay_ms + lfo_l * depth_ms) * 0.001f * static_cast<float>(sample_rate_),
+            1.0f, static_cast<float>(max_delay_samples_ - 2));
+
+        float rp_l = static_cast<float>(write_pos_) - delay_samp_l;
+        if (rp_l < 0.0f) rp_l += static_cast<float>(max_delay_samples_);
+        const int ip_l  = static_cast<int>(rp_l);
+        const float f_l = rp_l - static_cast<float>(ip_l);
+        const float delayed_l = delay_buffer_[ip_l % max_delay_samples_] * (1.0f - f_l) +
+                                delay_buffer_[(ip_l + 1) % max_delay_samples_] * f_l;
+
+        delay_buffer_[write_pos_] = clamp(dry + feedback * delayed_l, -2.0f, 2.0f);
+        left[i] = dry * (1.0f - mix) + delayed_l * mix;
+
+        // Right LFO — 180° offset (0.5 of normalised cycle)
+        const float lfo_r      = 0.5f * (1.0f + std::sin(TWO_PI * (lfo_phase_ + 0.5f)));
+        const float delay_samp_r = clamp(
+            (delay_ms + lfo_r * depth_ms) * 0.001f * static_cast<float>(sample_rate_),
+            1.0f, static_cast<float>(max_delay_samples_ - 2));
+
+        float rp_r = static_cast<float>(write_pos_r_) - delay_samp_r;
+        if (rp_r < 0.0f) rp_r += static_cast<float>(max_delay_samples_);
+        const int ip_r  = static_cast<int>(rp_r);
+        const float f_r = rp_r - static_cast<float>(ip_r);
+        const float delayed_r = delay_buffer_r_[ip_r % max_delay_samples_] * (1.0f - f_r) +
+                                delay_buffer_r_[(ip_r + 1) % max_delay_samples_] * f_r;
+
+        delay_buffer_r_[write_pos_r_] = clamp(dry + feedback * delayed_r, -2.0f, 2.0f);
+        right[i] = dry * (1.0f - mix) + delayed_r * mix;
+
+        write_pos_   = (write_pos_   + 1) % max_delay_samples_;
+        write_pos_r_ = (write_pos_r_ + 1) % max_delay_samples_;
+        lfo_phase_ += lfo_inc;
+        if (lfo_phase_ >= 1.0f) lfo_phase_ -= 1.0f;
+    }
+}
+
 void Flanger::reset() {
-    std::fill(delay_buffer_.begin(), delay_buffer_.end(), 0.0f);
-    write_pos_  = 0;
-    lfo_phase_  = 0.0f;
+    std::fill(delay_buffer_.begin(),   delay_buffer_.end(),   0.0f);
+    std::fill(delay_buffer_r_.begin(), delay_buffer_r_.end(), 0.0f);
+    write_pos_   = 0;
+    write_pos_r_ = 0;
+    lfo_phase_   = 0.0f;
 }
 
 } // namespace GuitarAmp

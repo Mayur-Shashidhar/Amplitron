@@ -293,14 +293,24 @@ private:
 
     std::vector<std::shared_ptr<Effect>> effects_;
     std::vector<float> process_buffer_;
+    std::vector<float> process_buffer_right_;
     std::mutex effect_mutex_;
     Recorder recorder_;
     std::shared_ptr<Effect> tuner_tap_;
     std::string last_error_;
 
+    // Audio-thread-private shadow of the effect chain.
+    // Copied from effects_ / tuner_tap_ whenever effect_mutex_ is acquired.
+    // Guarantees the audio thread always processes with the last stable chain
+    // even when the GUI thread briefly holds effect_mutex_ for structural
+    // mutations (add/remove/move), eliminating the dry-pass glitch.
+    std::vector<std::shared_ptr<Effect>> audio_shadow_effects_;
+    std::shared_ptr<Effect> audio_shadow_tuner_;
+
     // Lock-free GUI -> Audio command queue (256 slots)
     SPSCQueue<AudioCommand, 256> command_queue_;
-    void drain_commands();
+    void drain_commands();        // Must be called while holding effect_mutex_
+    void drain_gain_commands();   // Safe to call without effect_mutex_
 
     // CPU load watchdog for buffer auto-tuning
     std::atomic<float> cpu_load_{0.0f};
