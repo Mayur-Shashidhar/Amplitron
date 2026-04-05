@@ -43,7 +43,8 @@ static void sdl_audio_callback(void* userdata, Uint8* stream, int len) {
     auto* be = static_cast<AudioBackendState*>(userdata);
     auto* engine = be->engine;
     auto* out = reinterpret_cast<float*>(stream);
-    int frame_count = len / static_cast<int>(sizeof(float));
+    // SDL delivers len bytes for interleaved stereo; divide by 2 channels
+    int frame_count = len / static_cast<int>(2 * sizeof(float));
 
     auto& cap = be->capture_buffer;
     if (static_cast<int>(cap.size()) < frame_count)
@@ -107,7 +108,7 @@ bool AudioEngine::start() {
     SDL_memset(&want_out, 0, sizeof(want_out));
     want_out.freq = sample_rate_;
     want_out.format = AUDIO_F32;
-    want_out.channels = 1;
+    want_out.channels = 2;
     want_out.samples = static_cast<Uint16>(web_buffer);
     want_out.callback = sdl_audio_callback;
     backend_->engine = this;

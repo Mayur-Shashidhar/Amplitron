@@ -105,7 +105,6 @@ void Reverb::process(float* buffer, int num_samples) {
 
 void Reverb::process_stereo(float* left, float* right, int num_samples) {
     if (!enabled_) {
-        std::memcpy(right, left, static_cast<size_t>(num_samples) * sizeof(float));
         return;
     }
 

@@ -31,6 +31,7 @@ void AudioEngine::add_effect(std::shared_ptr<Effect> effect) {
     std::lock_guard<std::mutex> lock(effect_mutex_);
     effect->set_sample_rate(sample_rate_);
     effects_.push_back(std::move(effect));
+    topology_dirty_.store(true, std::memory_order_release);
 }
 
 void AudioEngine::insert_effect(int index, std::shared_ptr<Effect> effect) {
@@ -41,12 +42,14 @@ void AudioEngine::insert_effect(int index, std::shared_ptr<Effect> effect) {
     } else {
         effects_.push_back(std::move(effect));
     }
+    topology_dirty_.store(true, std::memory_order_release);
 }
 
 void AudioEngine::remove_effect(int index) {
     std::lock_guard<std::mutex> lock(effect_mutex_);
     if (index >= 0 && index < static_cast<int>(effects_.size())) {
         effects_.erase(effects_.begin() + index);
+        topology_dirty_.store(true, std::memory_order_release);
     }
 }
 
@@ -57,6 +60,7 @@ void AudioEngine::restore_effects_state(std::vector<std::shared_ptr<Effect>> new
         fx->set_sample_rate(sample_rate_);
         effects_.push_back(std::move(fx));
     }
+    topology_dirty_.store(true, std::memory_order_release);
 }
 
 void AudioEngine::set_tuner_tap(std::shared_ptr<Effect> tap) {
@@ -66,11 +70,13 @@ void AudioEngine::set_tuner_tap(std::shared_ptr<Effect> tap) {
         tuner_tap_->set_sample_rate(sample_rate_);
         tuner_tap_->reset();
     }
+    topology_dirty_.store(true, std::memory_order_release);
 }
 
 void AudioEngine::clear_tuner_tap() {
     std::lock_guard<std::mutex> lock(effect_mutex_);
     tuner_tap_.reset();
+    topology_dirty_.store(true, std::memory_order_release);
 }
 
 bool AudioEngine::has_tuner_tap() const {
@@ -84,6 +90,7 @@ void AudioEngine::move_effect(int from, int to) {
     auto effect = effects_[from];
     effects_.erase(effects_.begin() + from);
     effects_.insert(effects_.begin() + to, effect);
+    topology_dirty_.store(true, std::memory_order_release);
 }
 
 // =============================================================================
@@ -210,8 +217,10 @@ void AudioEngine::process_audio(const float* input, float* output, int frame_cou
     // callback behind) — eliminating the dry-pass glitch.
     if (effect_mutex_.try_lock()) {
         drain_commands();
-        audio_shadow_effects_ = effects_;
-        audio_shadow_tuner_   = tuner_tap_;
+        if (topology_dirty_.exchange(false, std::memory_order_acq_rel)) {
+            audio_shadow_effects_ = effects_;
+            audio_shadow_tuner_   = tuner_tap_;
+        }
         effect_mutex_.unlock();
     }
 
