@@ -314,6 +314,7 @@ void GuiManager::render_menu_bar() {
             }
             if (ImGui::MenuItem("Load Preset...", "Ctrl+O")) {
                 show_load_preset_ = true;
+                gui_presets_.ensure_factory_presets();
                 gui_presets_.refresh_presets(true);
             }
             bool has_selected_preset = gui_presets_.selected_preset_index() >= 0 &&
