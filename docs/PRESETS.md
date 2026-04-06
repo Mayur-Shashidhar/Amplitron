@@ -2,29 +2,47 @@
 
 Welcome to the Amplitron example presets! This collection is designed to demonstrate the versatility and power of the Amplitron DSP engine right out of the box. 
 
+**Want to see them in action?** Check out the [Amplitron demo video on YouTube](https://youtu.be/OLGx1zYj0W4) for a first look at how the presets and effects work.
+
 You can load these presets directly from the "Presets" menu in the GUI.
 
 ## Included Presets
 
 ### `01 Sparkling Clean`
 * **Style:** Lush, shimmering clean tone
-* **Signal Chain:** Compressor -> Amp Sim (Clean American) -> Chorus -> Delay -> Reverb
-* **Use Case:** Perfect for arpeggiated chords, indie dream pop, and 80s ballads. Uses the Fender Twin emulation along with deep chorus and a spacious hall-style reverb.
+* **Amp Model:** Clean American (Fender Twin)
+* **Active Effects:** Noise Gate, Compressor, Chorus, Delay, Reverb, Amp Sim
+* **Use Case:** Perfect for arpeggiated chords, indie pop, and 80s ballads. Uses the Fender Twin emulation along with smooth chorus and warm hall-style reverb.
 
 ### `02 Classic Rock Crunch`
 * **Style:** Warm, mid-focused driven rock tone
-* **Signal Chain:** Overdrive -> Amp Sim (British Crunch) -> Equalizer -> Cabinet (2x12) -> Reverb
-* **Use Case:** Excellent for classic rock rhythm playing or blues solos. Focuses heavily on the Marshall JCM800 emulation pushed by an analog-style overdrive.
+* **Amp Model:** British Crunch (Marshall JCM800)
+* **Active Effects:** Noise Gate, Overdrive, Equalizer, Phaser, Reverb, Amp Sim
+* **Use Case:** Excellent for classic rock rhythm playing, blues solos, and vintage-inspired tones. The Phaser adds classic 70s character to the Marshall punch.
 
 ### `03 Modern Metal Lead`
 * **Style:** High-gain, tight-tracking lead tone
-* **Signal Chain:** Noise Gate -> Distortion -> Amp Sim (High Gain Modern) -> Equalizer (Mid-scoop) -> Cabinet (4x12) -> Delay (Lead echoes)
-* **Use Case:** Fast alternate picking, sweep picking, and heavy breakdowns. Uses the Mesa Boogie emulation and hard-clipping distortion.
+* **Amp Model:** High Gain Modern (Mesa Boogie Rectifier)
+* **Active Effects:** Noise Gate, Distortion, Equalizer (mid-scooped), Delay, Reverb, Amp Sim
+* **Use Case:** Fast alternate picking, sweep picking, and heavy breakdowns. The mid-scoop EQ tightens the tone, and the delay adds space without muddiness.
 
 ### `04 Ambient Swells`
 * **Style:** Spatially massive, washed-out tone
-* **Signal Chain:** Compressor (High sustain) -> Amp Sim (Jazz Warm) -> Chorus -> Multi-stage Delay -> Reverb (Max decay)
-* **Use Case:** Ambient soundscapes, volume swells, and cinematic textures. Focuses on the pristine solid-state response of the Roland JC-120 emulation.
+* **Amp Model:** Jazz Warm (Roland JC-120)
+* **Active Effects:** Noise Gate, Compressor (high sustain), Equalizer, Chorus, Flanger, Delay, Reverb, Amp Sim
+* **Use Case:** Ambient soundscapes, volume swells, and cinematic textures. Combines thick modulation (chorus + flanger) with long reverb decays for expansive, ethereal tones.
+
+### `05 Phase Shift Lead`
+* **Style:** Slow, hypnotic phase sweep on a clean tone
+* **Amp Model:** Clean American (Fender Twin)
+* **Active Effects:** Noise Gate, Compressor, Equalizer, Phaser, Delay, Reverb, Amp Sim
+* **Use Case:** Classic rock solos, funky chords, and psychedelic textures. Inspired by the legendary MXR Phase 90 in 4-stage mode. Subtle delay adds depth to the sweep.
+
+### `06 Jet Flanger`
+* **Style:** Dramatic jet-plane flanger sweep with strong resonance
+* **Amp Model:** Jazz Warm (Roland JC-120)
+* **Active Effects:** Noise Gate, Compressor, Equalizer, Flanger, Reverb, Amp Sim
+* **Use Case:** Striking on open chords, harmonics, and slow single-note lines. Inspired by the MXR M117R and Boss BF-2. The high flanger feedback creates that classic "jet" effect.
 
 ## Adapting Presets to Your Guitar
 

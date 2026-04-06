@@ -11,6 +11,10 @@ Professional real-time guitar amplifier simulator with ultra-low latency, 16 stu
 
 **[Download Latest Release](https://github.com/sudip-mondal-2002/Amplitron/releases/latest)** | **[Visit Website](https://sudip-mondal-2002.github.io/Amplitron/)**
 
+## 🎬 Demo Video
+
+Watch the first look and demo: **[Amplitron Demo - YouTube](https://youtu.be/OLGx1zYj0W4)**
+
 Transform your computer into a complete guitar rig. Plug in your guitar via USB audio interface or guitar cable, and get instant access to professional amp simulation with studio-quality effects — all with imperceptible latency.
 
 ---

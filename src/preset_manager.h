@@ -44,6 +44,7 @@ public:
 
     // Override the presets directory with a user-selected path.
     // Pass empty string to revert to auto-detection.
+    // Automatically populates the new directory with factory presets if empty.
     static void set_presets_dir(const std::string& dir);
 
     // Return the currently configured custom directory (empty = auto).
@@ -62,6 +63,9 @@ public:
 private:
     static std::string last_error_;
     static std::string custom_presets_dir_;
+
+    // Create and save factory presets to the given directory
+    static void save_factory_presets(const std::string& dir);
 
     // Return platform config file path (e.g. ~/.config/amplitron/config.json)
     static std::string get_config_path();

@@ -1,6 +1,7 @@
 #include "common.h"
 #include "audio/audio_engine.h"
 #include "gui/gui_manager.h"
+#include "preset_manager.h"
 
 #include "audio/effects/noise_gate.h"
 #include "audio/effects/compressor.h"
@@ -15,6 +16,7 @@
 #include <iostream>
 #include <csignal>
 #include <atomic>
+#include <filesystem>
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -100,6 +102,11 @@ int main(int /*argc*/, char* /*argv*/[]) {
     std::cout << "Default signal chain loaded (clean acoustic preset)." << std::endl;
     std::cout << "  EQ and Reverb are ON. All other effects are bypassed." << std::endl;
     std::cout << "  Click pedal footswitches in the GUI to enable more effects." << std::endl;
+
+    // Initialize preset manager with bundled presets if available
+    if (std::filesystem::exists("presets")) {
+        Amplitron::PresetManager::set_presets_dir("presets");
+    }
 
     // Start audio
     if (!engine.start()) {

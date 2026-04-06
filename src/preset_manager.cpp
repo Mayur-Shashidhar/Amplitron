@@ -11,9 +11,16 @@
 #ifdef _WIN32
 #include <direct.h>
 #include <io.h>
+#include <windows.h>
 #define MKDIR(path) _mkdir(path)
 #define STAT_STRUCT struct _stat
 #define STAT_FN     _stat
+#elif defined(__APPLE__)
+#include <dirent.h>
+#include <mach-o/dyld.h>
+#define MKDIR(path) mkdir(path, 0755)
+#define STAT_STRUCT struct stat
+#define STAT_FN     stat
 #else
 #include <dirent.h>
 #define MKDIR(path) mkdir(path, 0755)
@@ -22,6 +29,9 @@
 #endif
 
 namespace Amplitron {
+
+// Forward declaration
+static void append_json_files(const std::string& dir, std::vector<std::string>& result);
 
 std::string PresetManager::last_error_;
 std::string PresetManager::custom_presets_dir_;
@@ -87,6 +97,12 @@ void PresetManager::set_presets_dir(const std::string& dir) {
     MKDIR(dir.c_str());
     if (dir_exists(dir)) {
         custom_presets_dir_ = dir;
+        // Populate new directory with factory presets if it's empty
+        std::vector<std::string> dir_presets;
+        append_json_files(dir, dir_presets);
+        if (dir_presets.empty()) {
+            save_factory_presets(dir);
+        }
     }
     // If creation/validation fails, custom_presets_dir_ is left unchanged.
 }
@@ -197,6 +213,91 @@ static void append_json_files(const std::string& dir,
         closedir(d);
     }
 #endif
+}
+
+static std::string get_bundled_presets_dir() {
+#ifdef _WIN32
+    // Executable directory + /presets
+    char path[MAX_PATH];
+    if (GetModuleFileNameA(nullptr, path, sizeof(path))) {
+        std::string exe_dir = path;
+        size_t last_slash = exe_dir.find_last_of("\\");
+        if (last_slash != std::string::npos) {
+            return exe_dir.substr(0, last_slash) + "\\presets";
+        }
+    }
+    return "presets";
+#elif defined(__APPLE__)
+    // Check both app bundle resources and executable directory
+    // App bundle: ../Resources/presets relative to executable
+    char exe_path[4096];
+    uint32_t size = sizeof(exe_path);
+    if (_NSGetExecutablePath(exe_path, &size) == 0) {
+        std::string exe_str = exe_path;
+        // Try Resources/presets first (app bundle)
+        size_t last_slash = exe_str.find_last_of("/");
+        if (last_slash != std::string::npos) {
+            std::string bundle_presets = exe_str.substr(0, last_slash) + "/../Resources/presets";
+            if (dir_exists(bundle_presets)) {
+                return bundle_presets;
+            }
+        }
+    }
+    // Fall back to executable directory
+    return "presets";
+#else
+    // Check next to executable first
+    if (dir_exists("presets")) {
+        return "presets";
+    }
+    // Fall back to system data directory
+    return "/usr/share/amplitron/presets";
+#endif
+}
+
+void PresetManager::save_factory_presets(const std::string& dir) {
+    std::string src_dir = get_bundled_presets_dir();
+    if (!dir_exists(src_dir)) {
+        std::cerr << "Bundled presets directory not found: " << src_dir << std::endl;
+        return;
+    }
+
+    std::vector<std::string> preset_files;
+    append_json_files(src_dir, preset_files);
+
+    for (const auto& src_path : preset_files) {
+        // Extract filename from source path
+        size_t last_slash = src_path.find_last_of("/\\");
+        std::string filename = (last_slash != std::string::npos) ?
+                                src_path.substr(last_slash + 1) : src_path;
+
+#ifdef _WIN32
+        std::string dest_path = dir + "\\" + filename;
+#else
+        std::string dest_path = dir + "/" + filename;
+#endif
+
+        // Read source file
+        std::ifstream src_file(src_path);
+        if (!src_file.is_open()) {
+            std::cerr << "Could not open source preset: " << src_path << std::endl;
+            continue;
+        }
+
+        std::string content((std::istreambuf_iterator<char>(src_file)),
+                           std::istreambuf_iterator<char>());
+        src_file.close();
+
+        // Write to destination
+        std::ofstream dest_file(dest_path);
+        if (!dest_file.is_open()) {
+            std::cerr << "Could not write preset: " << dest_path << std::endl;
+            continue;
+        }
+
+        dest_file << content;
+        dest_file.close();
+    }
 }
 
 std::vector<std::string> PresetManager::list_presets() {

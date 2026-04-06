@@ -186,8 +186,10 @@ jobs:
         # Add rpath to binary so it finds Frameworks
         install_name_tool -add_rpath @executable_path/../Frameworks Amplitron.app/Contents/MacOS/Amplitron 2>/dev/null || true
 
-        # Copy assets next to binary for SDL_GetBasePath
-        cp -r assets Amplitron.app/Contents/MacOS/assets || true
+        # Copy assets to Contents/Resources/ — SDL_GetBasePath() on macOS app bundles
+        # returns Contents/Resources/, not Contents/MacOS/, so the font loader finds:
+        # base_path + "assets/fonts/Roboto-Medium.ttf" = Contents/Resources/assets/fonts/...
+        cp -r assets Amplitron.app/Contents/Resources/assets || true
 
         # Copy icon
         cp icon.icns Amplitron.app/Contents/Resources/icon.icns 2>/dev/null || true

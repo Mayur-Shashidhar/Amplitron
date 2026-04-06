@@ -109,7 +109,7 @@ cmake --build build --target amplitron-tests && ./build/amplitron-tests
 
 ---
 
-## Updating `claude.md`
+## Updating `CLAUDE.md`
 
 At the end of any task that meaningfully changes the system architecture, update this file to keep it accurate. Follow these rules:
 

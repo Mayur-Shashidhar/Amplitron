@@ -184,3 +184,63 @@ TEST(preset_save_empty_name_still_works) {
     std::remove(path.c_str());
     engine.shutdown();
 }
+
+TEST(preset_set_presets_dir_copies_bundled_presets) {
+    // Create a temporary test directory
+    std::string test_dir = "presets/test_new_presets_dir_detailed";
+
+    // Remove if it exists from a previous run
+    #ifdef _WIN32
+        system(("rmdir /s /q \"" + test_dir + "\" >nul 2>&1").c_str());
+    #else
+        system(("rm -rf \"" + test_dir + "\" 2>/dev/null").c_str());
+    #endif
+
+    // Set the presets directory to our test directory
+    PresetManager::set_presets_dir(test_dir);
+
+    // Verify the directory exists
+    ASSERT_TRUE(file_exists(test_dir));
+
+    // Count files in the test directory
+    std::vector<std::string> test_dir_files;
+    #ifdef _WIN32
+        std::string cmd = "dir /b \"" + test_dir + "\\*.json\" 2>nul | find \"\"";
+    #else
+        std::string cmd = "find \"" + test_dir + "\" -name '*.json' -type f";
+    #endif
+    FILE* fp = popen(cmd.c_str(), "r");
+    if (fp) {
+        char buf[512];
+        while (fgets(buf, sizeof(buf), fp)) {
+            std::string line = buf;
+            if (!line.empty() && line.back() == '\n') line.pop_back();
+            if (!line.empty()) test_dir_files.push_back(line);
+        }
+        pclose(fp);
+    }
+
+    // We should have copied presets to the new directory
+    ASSERT_TRUE(test_dir_files.size() > 0);
+
+    // Verify at least one copied preset file exists and is readable
+    bool found_valid_preset = false;
+    for (const auto& preset_path : test_dir_files) {
+        if (file_exists(preset_path)) {
+            std::string content = read_file(preset_path);
+            if (!content.empty() && content.find("\"format_version\"") != std::string::npos) {
+                found_valid_preset = true;
+                break;
+            }
+        }
+    }
+    ASSERT_TRUE(found_valid_preset);
+
+    // Cleanup - reset to default and remove test directory
+    PresetManager::set_presets_dir("");
+    #ifdef _WIN32
+        system(("rmdir /s /q \"" + test_dir + "\" >nul 2>&1").c_str());
+    #else
+        system(("rm -rf \"" + test_dir + "\" 2>/dev/null").c_str());
+    #endif
+}
