@@ -94,7 +94,12 @@ void PresetManager::set_presets_dir(const std::string& dir) {
         custom_presets_dir_ = "";
         return;
     }
-    MKDIR(dir.c_str());
+    try {
+        std::filesystem::create_directories(dir);
+    } catch (...) {
+        // If creation fails, custom_presets_dir_ is left unchanged
+        return;
+    }
     if (dir_exists(dir)) {
         custom_presets_dir_ = dir;
         // Populate new directory with factory presets if it's empty
