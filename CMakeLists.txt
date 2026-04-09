@@ -178,13 +178,20 @@ set(APP_SOURCES
     src/gui/pedal_widget_knobs.cpp
     src/gui/command_history.cpp
     src/gui/gui_snapshots.cpp
-    src/midi/midi_manager.cpp
-    src/midi/midi_manager_mapping.cpp
-    src/midi/midi_manager_persist.cpp
-    src/gui/gui_midi.cpp
     src/preset_manager_dirs.cpp
     src/preset_manager_io.cpp
 )
+
+# --- MIDI Support (desktop only) ---
+set(MIDI_SOURCES)
+if(NOT EMSCRIPTEN AND NOT ANDROID AND NOT IOS)
+    list(APPEND MIDI_SOURCES
+        src/midi/midi_manager.cpp
+        src/midi/midi_manager_mapping.cpp
+        src/midi/midi_manager_persist.cpp
+        src/gui/gui_midi.cpp
+    )
+endif()
 
 # --- Platform-specific sources (selected at configure time) ---
 # Mobile (Android/iOS) and Web use SDL audio backend + stub file dialog
@@ -226,7 +233,7 @@ endif()
 if(EMSCRIPTEN)
 
     # --- Emscripten / WebAssembly build ---
-    add_executable(Amplitron ${APP_SOURCES} ${BACKEND_SOURCES} ${DIALOG_SOURCES} ${IMGUI_SOURCES} ${KISS_FFT_SOURCES})
+    add_executable(Amplitron ${APP_SOURCES} ${MIDI_SOURCES} ${BACKEND_SOURCES} ${DIALOG_SOURCES} ${IMGUI_SOURCES} ${KISS_FFT_SOURCES})
 
     target_include_directories(Amplitron PRIVATE
         ${CMAKE_SOURCE_DIR}/src
@@ -237,7 +244,7 @@ if(EMSCRIPTEN)
     )
 
     # OpenGL ES 3 for ImGui's OpenGL3 backend on WebGL 2
-    target_compile_definitions(Amplitron PRIVATE IMGUI_IMPL_OPENGL_ES3 AMPLITRON_VERSION="${AMPLITRON_VERSION}")
+    target_compile_definitions(Amplitron PRIVATE IMGUI_IMPL_OPENGL_ES3 AMPLITRON_VERSION="${AMPLITRON_VERSION}" AMPLITRON_NO_MIDI)
 
     # Emscripten linker flags for Web Audio + AudioWorklet + SharedArrayBuffer
     target_link_options(Amplitron PRIVATE
@@ -278,6 +285,7 @@ elseif(ANDROID)
     # AmplitronActivity.java overrides getLibraries() to load only "main".
     add_library(main SHARED
         ${APP_SOURCES}
+        ${MIDI_SOURCES}
         ${BACKEND_SOURCES}
         ${DIALOG_SOURCES}
         ${IMGUI_SOURCES}
@@ -296,6 +304,7 @@ elseif(ANDROID)
     target_compile_definitions(main PRIVATE
         IMGUI_IMPL_OPENGL_ES3
         AMPLITRON_VERSION="${AMPLITRON_VERSION}"
+        AMPLITRON_NO_MIDI
     )
 
     target_link_libraries(main PRIVATE
@@ -311,6 +320,7 @@ elseif(IOS)
     # --- iOS build: application bundle, SDL2 statically linked ---
     add_executable(Amplitron MACOSX_BUNDLE
         ${APP_SOURCES}
+        ${MIDI_SOURCES}
         ${BACKEND_SOURCES}
         ${DIALOG_SOURCES}
         ${IMGUI_SOURCES}
@@ -330,6 +340,7 @@ elseif(IOS)
         IMGUI_IMPL_OPENGL_ES3
         AMPLITRON_VERSION="${AMPLITRON_VERSION}"
         AMPLITRON_NO_DESKTOP_SHELL
+        AMPLITRON_NO_MIDI
     )
 
     target_link_libraries(Amplitron PRIVATE
@@ -369,7 +380,7 @@ else() # NOT EMSCRIPTEN, ANDROID, or IOS
         enable_language(RC)
     endif()
 
-    add_executable(Amplitron ${APP_SOURCES} ${BACKEND_SOURCES} ${DIALOG_SOURCES} ${IMGUI_SOURCES} ${KISS_FFT_SOURCES} $<$<PLATFORM_ID:Windows>:${WIN_RC}>)
+    add_executable(Amplitron ${APP_SOURCES} ${MIDI_SOURCES} ${BACKEND_SOURCES} ${DIALOG_SOURCES} ${IMGUI_SOURCES} ${KISS_FFT_SOURCES} $<$<PLATFORM_ID:Windows>:${WIN_RC}>)
 
     target_include_directories(Amplitron PRIVATE
         ${CMAKE_SOURCE_DIR}/src
@@ -456,6 +467,10 @@ else() # NOT EMSCRIPTEN, ANDROID, or IOS
         src/audio/effects/pitch_shifter.cpp
         src/audio/dsp/wav_loader.cpp
         src/audio/dsp/convolution_engine.cpp
+    )
+
+    # Desktop-only MIDI support for tests
+    list(APPEND CORE_SOURCES
         src/midi/midi_manager.cpp
         src/midi/midi_manager_mapping.cpp
         src/midi/midi_manager_persist.cpp

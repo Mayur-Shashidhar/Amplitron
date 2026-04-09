@@ -6,6 +6,19 @@ namespace Amplitron {
 
 class MidiManager;
 
+#ifdef AMPLITRON_NO_MIDI
+
+// Stub implementation for non-desktop platforms
+class GuiMidi {
+public:
+    explicit GuiMidi(MidiManager&) {}
+    void render(bool&) {}
+    bool render_learn_menu_item(const std::string&, const std::string&) { return false; }
+    bool render_learn_bypass_item(const std::string&) { return false; }
+};
+
+#else
+
 /**
  * @brief GUI module for MIDI settings window and MIDI Learn integration.
  *
@@ -36,5 +49,7 @@ public:
 private:
     MidiManager& midi_;
 };
+
+#endif // AMPLITRON_NO_MIDI
 
 } // namespace Amplitron

@@ -1,9 +1,12 @@
 #pragma once
 
-#include "audio/spsc_queue.h"
 #include <string>
 #include <vector>
 #include <cstdint>
+
+#ifndef AMPLITRON_NO_MIDI
+#include "audio/spsc_queue.h"
+#endif
 
 namespace Amplitron {
 
@@ -38,6 +41,42 @@ struct MidiMapping {
     std::string effect_name;        // For EffectParam/EffectBypass targets
     std::string param_name;         // For EffectParam targets only
 };
+
+#ifdef AMPLITRON_NO_MIDI
+
+// Stub implementation for non-desktop platforms (web, mobile)
+class MidiManager {
+public:
+    MidiManager() = default;
+    ~MidiManager() = default;
+
+    bool initialize() { return false; }
+    void shutdown() {}
+    std::vector<std::string> get_available_ports() const { return {}; }
+    bool open_port(int) { return false; }
+    void close_port() {}
+    int current_port() const { return -1; }
+    std::string current_port_name() const { return ""; }
+    bool is_port_open() const { return false; }
+
+    void add_mapping(const MidiMapping&) {}
+    void remove_mapping(int) {}
+    void clear_mappings() {}
+    const std::vector<MidiMapping>& mappings() const { static std::vector<MidiMapping> empty; return empty; }
+    void install_default_mappings() {}
+
+    void start_learn(MidiTargetType, const std::string&, const std::string&) {}
+    void cancel_learn() {}
+    bool is_learning() const { return false; }
+    std::string learn_status() const { return ""; }
+
+    void poll(AudioEngine&) {}
+    void save_config() const {}
+    void load_config() {}
+    void inject_event(const MidiEvent&) {}
+};
+
+#else
 
 /**
  * @brief MIDI input manager with CC-to-parameter mapping and MIDI learn.
@@ -152,5 +191,7 @@ private:
     std::string mappings_to_json() const;
     bool mappings_from_json(const std::string& json);
 };
+
+#endif // AMPLITRON_NO_MIDI
 
 } // namespace Amplitron
