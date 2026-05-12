@@ -24,7 +24,6 @@ body:
       label: Description
       description: A clear and concise description of the bug.
       placeholder: What happened?
-      value: ""
     validations:
       required: true
 
