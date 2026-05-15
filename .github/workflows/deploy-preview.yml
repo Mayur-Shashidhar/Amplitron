@@ -1,0 +1,31 @@
+name: Deploy Preview
+
+on:
+  workflow_run:
+    workflows:
+      - CI - Build and Test
+    types:
+      - completed
+  pull_request_target:
+    types:
+      - closed
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: deploy-preview-${{ github.event.workflow_run.id || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-preview:
+    name: Deploy PR Preview
+    if: >
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "hello"
