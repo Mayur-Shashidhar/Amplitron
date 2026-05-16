@@ -72,7 +72,8 @@ bool GuiPresets::save_named_preset(const std::string& preset_name,
         return false;
     }
 
-    if (PresetManager::save_preset(path, preset_name, description, engine_)) {
+    if (PresetManager::save_preset(path, preset_name, description, engine_,
+                                   midi_manager_ ? midi_manager_->mappings() : std::vector<MidiMapping>())) {
         preset_status_msg_ = "Saved: " + preset_name;
         refresh_presets(true);
         for (int i = 0; i < static_cast<int>(preset_files_.size()); ++i) {
@@ -108,7 +109,7 @@ bool GuiPresets::load_preset_by_index(int index) {
     float before_in = engine_.get_input_gain();
     float before_out = engine_.get_output_gain();
 
-    if (PresetManager::load_preset(path, engine_)) {
+    if (PresetManager::load_preset(path, engine_, midi_manager_)) {
         std::vector<LoadPresetCommand::EffectSnapshot> after_state;
         for (auto& fx : engine_.effects()) {
             LoadPresetCommand::EffectSnapshot snap;

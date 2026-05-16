@@ -34,6 +34,9 @@ public:
     /** @brief Set the pedal board pointer (for rebuild_widgets calls). */
     void set_pedal_board(PedalBoard* pb) { pedal_board_ = pb; }
 
+    /** @brief Set the MidiManager pointer (for saving/loading midi mappings). */
+    void set_midi_manager(MidiManager* m) { midi_manager_ = m; }
+
     // Preset management methods
     void refresh_presets(bool preserve_selection = true);
     bool save_named_preset(const std::string& preset_name,
@@ -55,6 +58,7 @@ private:
     AudioEngine& engine_;
     CommandHistory& history_;
     PedalBoard* pedal_board_ = nullptr;
+    MidiManager* midi_manager_ = nullptr;
 
     // Preset UI state
     char preset_name_buf_[128] = "My Preset";

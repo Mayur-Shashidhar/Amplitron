@@ -2,6 +2,7 @@
 
 #include "common.h"
 #include "audio/audio_engine.h"
+#include "midi/midi_manager.h"
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -22,6 +23,7 @@ struct PresetData {
         std::map<std::string, std::string> metadata;  // string key-value pairs (e.g. IR file path)
     };
     std::vector<EffectData> effects;
+    std::vector<MidiMapping> midi_mappings;
 };
 
 class PresetManager {
@@ -34,11 +36,13 @@ public:
     static bool save_preset(const std::string& filepath,
                             const std::string& preset_name,
                             const std::string& description,
-                            AudioEngine& engine);
+                            AudioEngine& engine,
+                            const std::vector<MidiMapping>& midi_mappings = {});
 
     // Load preset from JSON file and apply to engine
     static bool load_preset(const std::string& filepath,
-                            AudioEngine& engine);
+                            AudioEngine& engine,
+                            MidiManager* midi_manager = nullptr);
 
     // Get the active presets directory (creates if needed).
     // Priority: custom user dir → system default dir → local "presets" fallback.
