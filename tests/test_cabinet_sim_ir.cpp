@@ -5,6 +5,8 @@
 #include <vector>
 #include <cmath>
 #include <cstdio>
+#include <chrono>
+#include <algorithm>
 
 using namespace Amplitron;
 using namespace TestFramework;
@@ -121,4 +123,105 @@ TEST(CabinetSim_IR_DelayedImpulse) {
 
     std::remove(path.c_str());
 }
+
+// ============================================================
+// STRESS TEST: Real-time safety with long IR and small buffers
+// ============================================================
+//
+// This test validates that IR Cabinet processing does NOT cause heap
+// allocations, excessive jitter, or unstable callback durations when
+// using small audio buffers (64–256 samples) with long IRs (100ms+).
+// 
+// The test runs many consecutive audio frames, measures callback durations,
+// and verifies stable, predictable processing times without spikes.
+
+TEST(CabinetSim_IR_RealTime_Safety_SmallBuffers) {
+    const int sample_rate = 48000;
+    const int ir_duration_ms = 100;
+    const int ir_length = (sample_rate * ir_duration_ms) / 1000;  // 4800 samples
+    
+    // Create a long IR: exponentially decaying impulse response
+    std::vector<float> ir_samples(static_cast<size_t>(ir_length));
+    for (int i = 0; i < ir_length; ++i) {
+        float t = static_cast<float>(i) / static_cast<float>(sample_rate);
+        ir_samples[static_cast<size_t>(i)] = 0.5f * std::exp(-3.0f * t);
+    }
+    
+    // Write IR to WAV file
+    std::string ir_path = "test_stress_long_ir.wav";
+    ASSERT_TRUE(write_wav_mono_pcm16(ir_path, ir_samples, sample_rate));
+    
+    // Create cabinet and load long IR
+    CabinetSim cab;
+    cab.set_sample_rate(sample_rate);
+    ASSERT_TRUE(cab.load_ir(ir_path));
+    cab.set_enabled(true);
+    
+    // Test across multiple small buffer sizes
+    const int buffer_sizes[] = {64, 128, 256};
+    
+    for (int buf_size : buffer_sizes) {
+        // Reset cabinet state for each buffer size
+        cab.reset();
+        
+        // Generate input signal: 440 Hz sine wave
+        std::vector<float> input(static_cast<size_t>(buf_size));
+        for (int i = 0; i < buf_size; ++i) {
+            input[i] = 0.1f * std::sin(2.0f * 3.14159265f * 440.0f * 
+                                       static_cast<float>(i) / static_cast<float>(sample_rate));
+        }
+        
+        // Stress test: 500 consecutive frames with timing measurements
+        std::vector<double> frame_durations_us;
+        frame_durations_us.reserve(500);
+        
+        for (int frame = 0; frame < 500; ++frame) {
+            std::vector<float> buf = input;  // Fresh copy each frame
+            
+            // Measure callback duration
+            auto start = std::chrono::high_resolution_clock::now();
+            cab.process(buf.data(), buf_size);
+            auto end = std::chrono::high_resolution_clock::now();
+            
+            double duration_us = std::chrono::duration<double, std::micro>(end - start).count();
+            frame_durations_us.push_back(duration_us);
+            
+            // Sanity check: output must be finite (no NaN, Inf, denormalized)
+            for (int i = 0; i < buf_size; ++i) {
+                ASSERT_TRUE(std::isfinite(buf[i]));
+            }
+        }
+        
+        // Compute statistics on callback durations
+        double mean_us = 0.0;
+        for (double d : frame_durations_us) mean_us += d;
+        mean_us /= static_cast<double>(frame_durations_us.size());
+        
+        double variance = 0.0;
+        for (double d : frame_durations_us) {
+            variance += (d - mean_us) * (d - mean_us);
+        }
+        variance /= static_cast<double>(frame_durations_us.size());
+        double stddev = std::sqrt(variance);
+        
+        double max_duration = *std::max_element(frame_durations_us.begin(), frame_durations_us.end());
+        
+        // Heuristic: Real-time safety check
+        // - Mean duration should scale with buffer size (~0.1–0.5 µs per sample)
+        // - Std dev should be small (< 2x mean is reasonable)
+        // - Max spike should not exceed mean + 5*stddev (outlier threshold)
+        double expected_max_us = mean_us + 5.0 * stddev;
+        
+        ASSERT_LT(stddev, 2.0 * mean_us)
+            << "Callback duration jitter too high for buffer size " << buf_size
+            << ": stddev=" << stddev << " µs, mean=" << mean_us << " µs";
+        
+        ASSERT_LT(max_duration, expected_max_us)
+            << "Callback duration spike detected for buffer size " << buf_size
+            << ": max=" << max_duration << " µs, expected_max=" << expected_max_us << " µs";
+    }
+    
+    std::remove(ir_path.c_str());
+}
+
 

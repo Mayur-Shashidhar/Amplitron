@@ -28,7 +28,14 @@ CabinetSim::CabinetSim() {
     bright_smooth_ = params_[1].value;
     const float sr = static_cast<float>(std::max(sample_rate_, 1));
     bright_alpha_ = 1.0f - std::exp(-1.0f / (sr * 0.01f));
-    dry_buffer_.reserve(1024);
+
+    // Preallocate dry_buffer_ to a reasonable maximum (512 samples) to avoid
+    // runtime allocations in the audio-thread process() path.
+    // This covers common buffer sizes: 64, 128, 256, 512 samples.
+    // Resizing during process() is never done; if a larger buffer is needed,
+    // it is flagged via pending_block_size_ for the GUI thread to handle.
+    dry_buffer_.reserve(512);
+    dry_buffer_.resize(512);
 }
 
 CabinetSim::~CabinetSim() {
@@ -126,22 +133,23 @@ void CabinetSim::process(float* buffer, int num_samples) {
     // If an IR is loaded, convolve for cabinet response.
     check_pending_kernel();
     if (conv_engine_.has_kernel()) {
+        // If block size doesn't match expected, signal GUI thread to rebuild kernel.
+        // Audio thread never resizes buffers; use preallocated dry_buffer_.
         if (num_samples != expected_block_size_ && num_samples > 0 &&
             !raw_ir_samples_.empty()) {
             pending_block_size_.store(num_samples, std::memory_order_release);
-        }
+            // Fall back to parametric cabinet (no convolution) this frame
+            // to avoid processing with mismatched buffer sizes
+        } else if (num_samples > 0 && num_samples <= static_cast<int>(dry_buffer_.size())) {
+            // Block size matches or is within preallocated buffer; safe to convolve
+            std::copy(buffer, buffer + num_samples, dry_buffer_.begin());
+            conv_engine_.process(buffer, num_samples);
 
-        if (dry_buffer_.size() < static_cast<size_t>(num_samples)) {
-            dry_buffer_.resize(num_samples);
+            if (mix_ < 1.0f) {
+                apply_mix(dry_buffer_.data(), buffer, num_samples);
+            }
+            return;
         }
-        std::copy(buffer, buffer + num_samples, dry_buffer_.begin());
-
-        conv_engine_.process(buffer, num_samples);
-
-        if (mix_ < 1.0f) {
-            apply_mix(dry_buffer_.data(), buffer, num_samples);
-        }
-        return;
     }
 
     const float bright_target = params_[1].value;
@@ -169,8 +177,11 @@ void CabinetSim::reset() {
     peak_.reset();
     conv_engine_.reset();
     bright_smooth_ = params_[1].value;
-    if (dry_buffer_.capacity() < 1024) {
-        dry_buffer_.reserve(1024);
+
+    // Ensure dry_buffer_ is preallocated to maximum size to guarantee
+    // no runtime allocations during process()
+    if (dry_buffer_.size() < 512) {
+        dry_buffer_.assign(512, 0.0f);
     }
 }
 
