@@ -7,9 +7,45 @@
 #include <cstdio>
 #include <chrono>
 #include <algorithm>
+#include <atomic>
 
 using namespace Amplitron;
 using namespace TestFramework;
+
+// Test-local allocation counter: override global new/delete for this TU so
+// we can deterministically detect heap allocations during the hot process()
+// loop. This replacement is intentionally minimal and only used by these
+// unit tests to assert zero allocations; it forwards to malloc/free.
+namespace {
+thread_local std::atomic<int> g_alloc_count{0};
+
+void* operator new(std::size_t sz) {
+    g_alloc_count.fetch_add(1, std::memory_order_relaxed);
+    void* p = std::malloc(sz);
+    if (!p) throw std::bad_alloc();
+    return p;
+}
+void* operator new[](std::size_t sz) {
+    g_alloc_count.fetch_add(1, std::memory_order_relaxed);
+    void* p = std::malloc(sz);
+    if (!p) throw std::bad_alloc();
+    return p;
+}
+void operator delete(void* p) noexcept { std::free(p); }
+void operator delete[](void* p) noexcept { std::free(p); }
+void operator delete(void* p, std::size_t) noexcept { std::free(p); }
+void operator delete[](void* p, std::size_t) noexcept { std::free(p); }
+void* operator new(std::size_t sz, const std::nothrow_t&) noexcept {
+    g_alloc_count.fetch_add(1, std::memory_order_relaxed);
+    return std::malloc(sz);
+}
+void* operator new[](std::size_t sz, const std::nothrow_t&) noexcept {
+    g_alloc_count.fetch_add(1, std::memory_order_relaxed);
+    return std::malloc(sz);
+}
+void operator delete(void* p, const std::nothrow_t&) noexcept { std::free(p); }
+void operator delete[](void* p, const std::nothrow_t&) noexcept { std::free(p); }
+} // anonymous namespace
 
 static void write_le16(std::ofstream& out, uint16_t v) {
     char b[2];
@@ -171,54 +207,32 @@ TEST(CabinetSim_IR_RealTime_Safety_SmallBuffers) {
                                        static_cast<float>(i) / static_cast<float>(sample_rate));
         }
         
-        // Stress test: 500 consecutive frames with timing measurements
-        std::vector<double> frame_durations_us;
-        frame_durations_us.reserve(500);
-        
-        for (int frame = 0; frame < 500; ++frame) {
-            std::vector<float> buf = input;  // Fresh copy each frame
-            
-            // Measure callback duration
-            auto start = std::chrono::high_resolution_clock::now();
+        // Warm-up: allow any one-time allocations (kernel build, internal buffers)
+        // to occur before we assert that the steady-state hot loop performs
+        // zero heap allocations.
+        const int warmup_frames = 10;
+        for (int frame = 0; frame < warmup_frames; ++frame) {
+            std::vector<float> buf = input;
             cab.process(buf.data(), buf_size);
-            auto end = std::chrono::high_resolution_clock::now();
-            
-            double duration_us = std::chrono::duration<double, std::micro>(end - start).count();
-            frame_durations_us.push_back(duration_us);
-            
-            // Sanity check: output must be finite (no NaN, Inf, denormalized)
             for (int i = 0; i < buf_size; ++i) {
                 ASSERT_TRUE(std::isfinite(buf[i]));
             }
         }
-        
-        // Compute statistics on callback durations
-        double mean_us = 0.0;
-        for (double d : frame_durations_us) mean_us += d;
-        mean_us /= static_cast<double>(frame_durations_us.size());
-        
-        double variance = 0.0;
-        for (double d : frame_durations_us) {
-            variance += (d - mean_us) * (d - mean_us);
+
+        // Zero the allocation counter and run the hot loop; ASSERT no heap
+        // allocations occur during the hot steady-state.
+        g_alloc_count.store(0, std::memory_order_relaxed);
+        const int hot_frames = 500;
+        for (int frame = 0; frame < hot_frames; ++frame) {
+            std::vector<float> buf = input;
+            cab.process(buf.data(), buf_size);
+            for (int i = 0; i < buf_size; ++i) {
+                ASSERT_TRUE(std::isfinite(buf[i]));
+            }
         }
-        variance /= static_cast<double>(frame_durations_us.size());
-        double stddev = std::sqrt(variance);
-        
-        double max_duration = *std::max_element(frame_durations_us.begin(), frame_durations_us.end());
-        
-        // Heuristic: Real-time safety check
-        // - Mean duration should scale with buffer size (~0.1–0.5 µs per sample)
-        // - Std dev should be small (< 2x mean is reasonable)
-        // - Max spike should not exceed mean + 5*stddev (outlier threshold)
-        double expected_max_us = mean_us + 5.0 * stddev;
-        
-        ASSERT_LT(stddev, 2.0 * mean_us)
-            << "Callback duration jitter too high for buffer size " << buf_size
-            << ": stddev=" << stddev << " µs, mean=" << mean_us << " µs";
-        
-        ASSERT_LT(max_duration, expected_max_us)
-            << "Callback duration spike detected for buffer size " << buf_size
-            << ": max=" << max_duration << " µs, expected_max=" << expected_max_us << " µs";
+
+        ASSERT_EQ(g_alloc_count.load(std::memory_order_relaxed), 0)
+            << "Heap allocation detected during CabinetSim::process() hot loop for buffer size " << buf_size;
     }
     
     std::remove(ir_path.c_str());

@@ -95,6 +95,13 @@ void CabinetSim::build_kernel(int block_size) {
     kernel->source_name = ir_name_;
     kernel->duration_ms = ir_duration_ms_;
 
+    // Ensure dry buffer can hold the requested block size. build_kernel()
+    // runs on the GUI thread (off the audio thread) so it's safe to resize
+    // the preallocated buffer here when a larger block is required.
+    if (static_cast<int>(dry_buffer_.size()) < block_size) {
+        dry_buffer_.assign(block_size, 0.0f);
+    }
+
     expected_block_size_ = block_size;
 
     ConvolutionKernel* old = pending_kernel_.exchange(kernel);
@@ -183,6 +190,13 @@ void CabinetSim::reset() {
     if (dry_buffer_.size() < 512) {
         dry_buffer_.assign(512, 0.0f);
     }
+
+    // Clear any pending kernel and force a rebuild on next load/process
+    ConvolutionKernel* old = pending_kernel_.exchange(nullptr);
+    delete old;
+    expected_block_size_ = 0;
+    pending_block_size_.store(0);
 }
+
 
 } // namespace Amplitron
